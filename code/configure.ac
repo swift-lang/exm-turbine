@@ -211,11 +211,11 @@ USE_MPI_INCLUDE=${USE_MPI_DIR}/include
 USE_MPI_LIB_DIR=${USE_MPI_DIR}/lib
 
 # Look for mpi.h at its APT location
-if [[ ! -f ${MPI_INCLUDE}/mpi.h ]]
+if [[ ! -f ${USE_MPI_INCLUDE}/mpi.h ]]
 then
-    if [[ -f ${MPI_INCLUDE}/mpi/mpi.h ]]
+    if [[ -f ${USE_MPI_INCLUDE}/mpi/mpi.h ]]
     then
-        MPI_INCLUDE=${MPI_INCLUDE}/mpi
+        USE_MPI_INCLUDE=${USE_MPI_INCLUDE}/mpi
     fi
 fi
 
