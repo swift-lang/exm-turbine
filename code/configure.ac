@@ -160,8 +160,6 @@ AC_ARG_WITH(mpi,
             AC_MSG_ERROR(No MPI directory at $withval)
         fi
         USE_MPI_DIR=${withval}
-        USE_MPI_INCLUDE=${USE_MPI_DIR}/include
-        USE_MPI_LIB_DIR=${USE_MPI_DIR}/lib
         AC_MSG_RESULT([Trying MPI directory: ${USE_MPI_DIR}])
     ],
     [])
@@ -199,8 +197,6 @@ then
    then
        AC_MSG_RESULT([PATH contains: ${program}])
        USE_MPI_DIR=$( cd $(dirname ${program})/.. ; /bin/pwd )
-       USE_MPI_INCLUDE=${USE_MPI_DIR}/include
-       USE_MPI_LIB_DIR=${USE_MPI_DIR}/lib
        AC_MSG_RESULT([Trying MPI directory: ${USE_MPI_DIR}])
    elif (( ! ${ENABLE_CUSTOM} ))
    then
@@ -209,6 +205,10 @@ then
                                   or mpicc in PATH .])
    fi
 fi
+
+# Set these to defaults for now...
+USE_MPI_INCLUDE=${USE_MPI_DIR}/include
+USE_MPI_LIB_DIR=${USE_MPI_DIR}/lib
 
 # Look for mpi.h at its APT location
 if [[ ! -f ${MPI_INCLUDE}/mpi.h ]]
