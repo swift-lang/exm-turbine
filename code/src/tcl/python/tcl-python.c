@@ -80,12 +80,18 @@ python_eval(const char* code, Tcl_Obj** result)
       return handle_python_exception();
   }
 
-  PyObject* o = PyRun_String(expression, Py_eval_input,
-                             main_dict, main_dict);
-  if (o == NULL) return handle_python_exception();
-  rc = PyArg_Parse(o, "s", &s);
-  assert(s != NULL);
-  *result = Tcl_NewStringObj(s, -1);
+  // Handle value expression:
+  if (expression != NULL)
+  {
+    DEBUG_TCL_TURBINE("python: expression: %s", expression);
+    PyObject* o = PyRun_String(expression, Py_eval_input,
+                               main_dict, main_dict);
+    if (o == NULL) return handle_python_exception();
+    rc = PyArg_Parse(o, "s", &s);
+    assert(s != NULL);
+    DEBUG_TCL_TURBINE("python: result: %s\n", s);
+    *result = Tcl_NewStringObj(s, -1);
+  }
 
   list_destroy(lines);
 
@@ -98,7 +104,7 @@ Python_Eval_Cmd(ClientData cdata, Tcl_Interp *interp,
 {
   TCL_ARGS(2);
   char* code = Tcl_GetString(objv[1]);
-  Tcl_Obj* result;
+  Tcl_Obj* result = NULL;
   int rc = python_eval(code, &result);
   TCL_CHECK(rc);
   Tcl_SetObjResult(interp, result);
