@@ -20,6 +20,6 @@
 set INPUT {
     TURBINE OFF
     TCL_TURBINE OFF
-    ADLB ON
+    ADLB OFF
     CACHE OFF
 }
