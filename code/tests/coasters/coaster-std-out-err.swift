@@ -9,7 +9,7 @@ app (file out, file err) date () {
  */
 main()
 {
-    file f_out<"/homes/yadunand/bin/exm-trunk/sfw/turbine/trunk/code/tests/coasters/test-2.out">;
-    file f_err<"/homes/yadunand/bin/exm-trunk/sfw/turbine/trunk/code/tests/coasters/test-2.err">;
+    file f_out<"/homes/yadunand/test2.out">;
+    file f_err<"/homes/yadunand/test-2.err">;
     (f_out, f_err) = date();
 }
