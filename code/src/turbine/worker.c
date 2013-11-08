@@ -43,7 +43,7 @@ turbine_worker_loop(Tcl_Interp* interp, void* buffer, int buffer_size,
 {
     int rc;
     int max_slots = 5;
-    int current_slots = 0;
+    int current_slots = 1; // Must be >0 and < max_slots
     Tcl_Obj* active_slots;
     int adlb_first_get_flag = 1;
     MPI_Comm task_comm;
@@ -123,6 +123,8 @@ turbine_worker_loop(Tcl_Interp* interp, void* buffer, int buffer_size,
                 Tcl_GetIntFromObj(interp, active_slots, &current_slots);
             }
             printf("Current_slots = %d \n", current_slots);
+            // TODO : Fix this , sleep in code is a bad idea.
+            usleep(50000); // Sleep for 50ms
         }
     }
     service_finalize();
