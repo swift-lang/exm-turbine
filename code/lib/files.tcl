@@ -19,7 +19,19 @@
 
 namespace eval turbine {
     namespace export get_file_status get_file_path is_file_mapped \
-                     filename2 copy_file close_file file_read file_write
+                     filename2 copy_file close_file file_read file_write \
+                     swift_filename
+
+    # Handles files that are input to a builtin function
+    # Increments reference count to avoid file deletion
+    # Returns just the file name for handoff to user code
+    proc swift_filename { file_var } {
+        upvar $file_var file_handle
+        incr_local_file_refcount $file_var 2
+        set result [ lindex $file_handle 0 ]
+        return $result
+    }
+
     # Extract file status future from handle
     proc get_file_status { file_handle } {
       return [ lindex $file_handle 0 ]
@@ -280,6 +292,18 @@ namespace eval turbine {
        # Increment refcount so not cleaned up locally
        lset local_f 1 [ expr {[ lindex $local_f 1 ] + 1} ]
        store_void [ get_file_status $f ]
+    }
+
+    proc incr_local_file_refcount { varname levels } {
+        upvar $levels $varname v
+        set old_refcount [ lindex $v 1 ]
+        set new_refcount [ expr {$old_refcount + 1} ]
+
+        if [ expr $old_refcount <= 0  ] {
+          error "Trying to increment reference count from zero or negative: \
+                    [ local_file_path $v ]"
+        }
+        lset v 1 $new_refcount
     }
 
     proc decr_local_file_refcount { varname } {

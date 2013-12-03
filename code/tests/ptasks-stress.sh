@@ -1,3 +1,4 @@
+#!/bin/bash
 # Copyright 2013 University of Chicago and Argonne National Laboratory
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -12,14 +13,16 @@
 # See the License for the specific language governing permissions and
 # limitations under the License
 
-# This file is expected to be regularly edited to control
-# debugging output.  It is sourced by debug-auto.tcl
-# The variable INPUT is converted to an array by debug-auto.tcl
-# Each token maps to ON or OFF to indicate debugging
+TESTS=$( dirname $0 )
 
-set INPUT {
-    TURBINE OFF
-    TCL_TURBINE OFF
-    ADLB OFF
-    CACHE OFF
-}
+set -x
+
+THIS=$0
+BIN=${THIS%.sh}.x
+OUTPUT=${THIS%.sh}.out
+
+export PROCS=8
+${TESTS}/run-mpi.zsh ${BIN} >& ${OUTPUT}
+[[ ${?} == 0 ]] || exit 1
+
+exit 0

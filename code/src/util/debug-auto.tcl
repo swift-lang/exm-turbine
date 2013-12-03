@@ -56,6 +56,15 @@ out "void turbine_debug(const char* token, " \
 
 out "void turbine_debug_finalize(void);\n\n"
 
+# stdbool.h needed for bool type
+outln "#include <stdbool.h>"
+outln "#ifndef NDEBUG"
+outln "extern bool turbine_debug_enabled;"
+outln "#else"
+outln "// compile-time constant for NDEBUG"
+outln "static const bool turbine_debug_enabled = false;"
+outln "#endif"
+
 # Note that we provide a noop for NDEBUG
 foreach token [ array names tokens ] {
     outln "// Macros for user token: $token\n"

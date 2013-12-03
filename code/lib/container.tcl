@@ -22,114 +22,206 @@
 namespace eval turbine {
     namespace export container_f_get container_f_insert
     namespace export c_f_lookup deeprule
+    namespace export swift_array_build
 
     namespace import ::turbine::c::create_nested \
                      ::turbine::c::create_nested_bag
 
-    # build array by inserting items into a container starting at 0
-    # close: decrement writers count at end
-    # val_type: type of array values
-    proc array_build { c elems close val_type } {
-      set n [ llength $elems ]
-      log "array_build: <$c> $n elems, close $close"
-      if { $n > 0 } {
-        for { set i 0 } { $i < $n } { incr i } {
-          set elem [ lindex $elems $i ]
-          set drops 0
-          if { [ expr {$close && $i == $n - 1 } ] } {
-            set drops 1
-          }
-          adlb::insert $c $i $elem $val_type $drops
-        }
-      } else {
-        adlb::write_refcount_decr $c
+    # build integer keyed array by inserting items into a container
+    # starting at 0
+    # write_decr: decrement writers count
+    # args: type of array values, passed to adlb::store
+    proc array_build { c vals write_decr args } {
+      set kv_dict [ dict create ]
+      set i 0
+      foreach val $vals {
+        dict append kv_dict $i $val
+        incr i
       }
+      array_kv_build $c $kv_dict $write_decr integer {*}$args
     }
 
     proc swift_array_build { c elems var_type } { 
         set n [ llength $elems ]
-        log "array_build: <$c> elems: $n"
-        set L [ list ] 
-        for { set i 0 } { $i < $n } { incr i } { 
-            set item [ lindex $elems $i ] 
-            puts "item: $item"
-            if [ string equal $var_type "file" ] { 
-                turbine::allocate_file2 f "" 1
-                set s [ literal string $item ]
-                puts "f: $f"
-                turbine::input_file [ list $f ] $s
-                set td $f
-            } else { 
-                literal td $var_type $item
+        log "swift_array_build: <$c> elems: $n var_type: $var_type"
+
+        if [ string equal $var_type "file" ] {
+            set L [ list ] 
+            # Mass create filename tds.  Requires 2 initial read refcounts
+            if { $n > 0 } {
+              set filename_tds [ adlb::multicreate {*}[ lrepeat \
+                                      $n [ list string 2 ] ] ]
+            } else {
+              # Avoid lrepeat not support 0 repeats in tcl < 8.6
+              set filename_tds [ list ]
             }
-            lappend L $td
+            set type "file_ref"
+            for { set i 0 } { $i < $n } { incr i } { 
+                set elem [ lindex $elems $i ] 
+                set filename_td [ lindex $filename_tds $i ]
+                store_string $filename_td $elem
+                turbine::allocate_file2 td $filename_td 1 0
+                lappend L $td
+            }
+        } else { 
+            set type "ref"
+            if { $n > 0 } {
+              set L [ adlb::multicreate {*}[ lrepeat $n [ list $type ] ] ]
+            } else {
+              # Avoid lrepeat not support 0 repeats in tcl < 8.6
+              set L [ list ]
+            }
+            for { set i 0 } { $i < $n } { incr i } { 
+                set elem [ lindex $elems $i ] 
+                set td [ lindex $L $i ]
+                adlb::store $td $var_type $elem
+            }            
         }
-        array_build $c $L 0 ref
+        array_build $c $L 1 $type
     }
 
     # build array by inserting items into a container starting at 0
-    # close: decrement writers count at end
-    # val_type: type of array values
-    proc array_kv_build { c kv_dict close val_type } {
-      set n [ dict size $kv_dict ]
-      log "array_kv_build: <$c> $n elems, close $close"
-      if { $n > 0 } {
-        set i 0
-        dict for { key val } $kv_dict {
-          set drops 0
-          if { [ expr {$close && $i == $n - 1 } ] } {
-            set drops 1
-          }
-          adlb::insert $c $key $val $val_type $drops
-          incr i
-        }
-      } else {
-        adlb::write_refcount_decr $c
-      }
+    # write_decr: decrement writers count
+    # key_type: array key type
+    # args: type of array values, passed to adlb::store
+    proc array_kv_build { c kv_dict write_decr key_type args } {
+      log "array_kv_build: <$c> [ dict size $kv_dict ] elems, write_decr $write_decr"
+      adlb::store $c container $key_type {*}$args $kv_dict $write_decr
     }
 
     # build array from values
-    proc array_kv_build2 { c kv_dict close val_type } {
+    # write_decr: decrement writers count
+    # key_type: array key type
+    # args: type of array values, passed to adlb::store
+    proc array_kv_build2 { c kv_dict write_decr key_type args } {
       set n [ dict size $kv_dict ]
-      set typel [ list $val_type 1 1 ]
-
-      set elems [ adlb::multicreate [ lrepeat $n $typel ] ]
-      log "array_kv_build2: <$c> $n elems, close $close"
+      set typel $args
+      # Add decr to list
+      lappend typel 1 1
+      
       if { $n > 0 } {
-        set i 0
-        dict for { key val } $kv_dict {
-          set drops 0
-          if { [ expr {$close && $i == $n - 1 } ] } {
-            set drops 1
-          }
-          set elem [ lindex $elems $i ]
-          adlb::store $elem $val_type $val
-          adlb::insert $c $key $elem $val_type $drops
-          incr i
-        }
+        set elems [ adlb::multicreate {*}[ lrepeat $n $typel ] ]
       } else {
-        adlb::write_refcount_decr $c
+        # Avoid lrepeat not support 0 repeats in tcl < 8.6
+        set elems [ list ]
       }
+      log "array_kv_build2: <$c> [ dict size $kv_dict ] elems, write_decr $write_decr"
+      set kv_dict2 [ dict create ]
+      set i 0
+      dict for { key val } $kv_dict {
+        set elem [ lindex $elems $i ]
+        adlb::store $elem $val_type $val
+        dict append kv_dict2 $key $elem
+        incr i
+      }
+      array_kv_build $c $kv_dict2 $write_decr $key_type {*}$args
     }
     
     
     # build multiset by inserting items into a container starting at 0
-    # close: decrement writers count at end
-    # val_type: type of array values
-    proc multiset_build { ms elems close val_type } {
+    # write_decr: decrement writers count
+    # args: type of multiset elems, passed to adlb::store
+    proc multiset_build { ms elems write_decr args } {
       set n [ llength $elems ]
-      log "multiset_build: <$ms> $n elems, close $close"
-      if { $n > 0 } {
-        for { set i 0 } { $i < $n } { incr i } {
-          set elem [ lindex $elems $i ]
-          set drops 0
-          if { [ expr {$close && $i == $n - 1 } ] } {
-            set drops 1
-          }
-          adlb::store $ms $elem $val_type $drops
+      log "multiset_build: <$ms> $n elems, write_decr $write_decr"
+      adlb::store $ms multiset {*}$args $elems $write_decr
+    }
+    
+    proc type_create_slice { outer_type type_list start_pos } {
+      switch $outer_type {
+        container {
+          # Include key and value types
+          return [ lrange $type_list $start_pos [ expr {$start_pos + 2} ] ]
         }
-      } else {
-        adlb::write_refcount_decr $ms
+        multiset {
+          # Include value type
+          return [ lrange $type_list $start_pos [ expr {$start_pos + 1} ] ]
+        }
+        default {
+          return [ list $outer_type ]
+        }
+      }
+    }
+
+    # Recursively build a nested ADLB structure with containers/multisets/etc
+    # types: list of types from outer to inner. 
+    #        key/value types are both included in list
+    # types_pos: current position in types list
+    proc build_rec { id cval types {types_pos 0} {write_decr 1}} {
+      log "build_rec: <$id>"
+      set outer_type [ lindex $types $types_pos ]
+      
+      # If there are more than two entries left in the type list
+      # (the leaf type, and another container type), we will
+      # recurse to handle that.
+      
+      switch $outer_type {
+        container {
+          set n [ dict size $cval ]
+          set key_type_pos [ expr {$types_pos + 1} ]
+          set key_type [ lindex $types $key_type_pos ]
+          set val_type_pos [ expr {$types_pos + 2} ]
+          set val_type [ lindex $types $val_type_pos ]
+          # appropriate slice of types depending on value type
+          set create_types [ type_create_slice $val_type $types $val_type_pos ]
+          # initial refcounts
+          lappend create_types 1 1
+          if { $n > 0 } {
+            set val_ids [ adlb::multicreate {*}[ lrepeat $n $create_types ] ]
+          } else {
+            # Avoid lrepeat not support 0 repeats in tcl < 8.6
+            set val_ids [ list ]
+          }
+          set val_dict [ dict create ]
+
+          set i 0
+          dict for { key val } $cval {
+            set val_id [ lindex $val_ids $i ]
+
+            # build inner data structure
+            build_rec $val_id $val $types $val_type_pos 1
+            
+            dict append val_dict $key $val_id
+            incr i
+          }
+          # Store values all at once
+          adlb::store $id container $key_type ref $val_dict $write_decr
+        }
+        multiset {
+          set n [ llength $cval ]
+          set val_type_pos [ expr {$types_pos + 1} ]
+          set val_type [ lindex $types $val_type_pos ]
+          # appropriate slice of types depending on value type
+          set create_types [ type_create_slice $val_type $types $val_type_pos ]
+          # initial refcounts
+          lappend create_types 1 1
+          if { $n > 0 } {
+            set val_ids [ adlb::multicreate {*}[ lrepeat $n $create_types ] ]
+          } else {
+            # Avoid lrepeat not support 0 repeats in tcl < 8.6
+            set val_ids [ list ]
+          }
+
+          set i 0
+          foreach val $cval {
+            set val_id [ lindex $val_ids $i ]
+
+            # build inner data structure
+            build_rec $val_id $val $types $val_type_pos 1
+
+            incr i
+          }
+          # Store values all at once
+          adlb::store $id multiset ref $val_ids $write_decr
+        }
+        default {
+          if [ expr {$types_pos + 1 == [ llength $types ]} ] {
+            # Don't need to recurse: just store
+            adlb::store $id $outer_type $cval
+          } else {
+            error "Expected container type to enumerate: $outer_type"
+          }
+        }
       }
     }
 
@@ -582,8 +674,8 @@ namespace eval turbine {
         store_integer $result $sz
     }
 
-    proc container_size_local { container } {
-      return [ adlb::container_size $container ]
+    proc container_size_local { container {read_decr 0} } {
+      return [ adlb::container_size $container $read_decr ]
     }
 
     # When container c and integer i are closed,
@@ -772,35 +864,39 @@ namespace eval turbine {
 
       switch $container_type {
         container {
-          set vals [ adlb::enumerate $container dict all 0 $read_decr ]
+          set vals [ adlb::enumerate $container dict all 0 0 ]
           if { $recurse } {
             set result_dict [ dict create ]
             dict for { key subcontainer } $vals {
               dict append result_dict $key [ enumerate_rec $subcontainer \
                     $types [ expr {$depth + 1} ] 0 ]
             }
-            return $result_dict
+            set rv $result_dict
           } else {
-            return [ multi_retrieve_kv $vals CACHED $member_type ]
+            set rv [ multi_retrieve_kv $vals CACHED $member_type ]
           }
         }
         multiset {
-          set vals [ adlb::enumerate $container members all 0 $read_decr ]
+          set vals [ adlb::enumerate $container members all 0 0 ]
           if { $recurse } {
             set result_list [ list ]
             foreach subcontainer $vals {
               lappend result_dict [ enumerate_rec $subcontainer \
                                     $types [ expr {$depth + 1} ] 0 ]
             }
-            return $result_list
+            set rv $result_list
           } else {
-            return [ multi_retrieve $vals CACHED $member_type ]
+            set rv [ multi_retrieve $vals CACHED $member_type ]
           }
         }
         default {
           error "Expected container type to enumerate: $container_type"
         }
       }
+      
+      # Decrement at end to avoid freeing members
+      adlb::read_refcount_decr $container $read_decr
+      return $rv
     }
 }
 

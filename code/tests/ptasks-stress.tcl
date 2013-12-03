@@ -12,44 +12,37 @@
 # See the License for the specific language governing permissions and
 # limitations under the License
 
-# Test trace and basic numerical functionality
+# Test trace and basic string functionality
 
 # SwiftScript
-# x = 2+2;
-# trace(x);
+# string s1 = "hi";
+# string s2 = "bye";
+# trace(s1,s2);
 
 package require turbine 0.0.1
 
 proc rules { } {
 
-    turbine::create_integer 11
-    turbine::create_integer 12
-    turbine::create_string  13
-    turbine::create_string  14
-    turbine::create_float   15
+    turbine::create_string 11
 
-    turbine::store_integer 11 2
-    turbine::store_integer 12 2
-    turbine::store_string  13 "(%i,%i,%s,%0.2f)"
-    turbine::store_string  14 "howdy"
-    turbine::store_float   15 3.1415
+    turbine::store_string 11 "hi"
 
-    # Test without output
-    turbine::printf "" [ list 13 11 12 14 15 ]
-   
-    # Test with output
-    turbine::create_void    16
-    turbine::create_string  17
-    turbine::store_string 17 "Hello World"
-    turbine::printf [ list 16 ] [ list 17 ]
+    # Run many short tasks as stress test
+    set N 10000
+    set us_dur 0
+    for { set i 0 } { $i < $N } { incr i } {
+      puts "HERE"
+      ptasks_1 "" [ list 11 ] $us_dur
+    }
+}
 
-    # Check void was set
-    turbine::c::rule "17" "puts {Void was set}" type $turbine::CONTROL
+proc ptasks_1 { result inputs us_dur } {
+    turbine::rule $inputs "ptasks_1_c $result $inputs $us_dur" \
+        type $turbine::WORK parallelism 2
 }
 
 turbine::defaults
 turbine::init $engines $servers
-
 turbine::start rules
 turbine::finalize
 

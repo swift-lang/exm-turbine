@@ -47,22 +47,37 @@ namespace eval turbine {
     # How to display string values in the log
     variable log_string_mode
 
+    # Whether read reference counting is enabled.  Default to off
+    variable read_refcounting_on
+
+    # The language driving the run (default Turbine, may be Swift)
+    # Used for error messages
+    variable language
+    set language Turbine
+
     # The Turbine Tcl error code
     # Catches known errors from Turbine libraries via Tcl return/catch
     variable error_code
-
-    # Whether read reference counting is enabled.  Default to off
-    variable read_refcounting_on
+    set error_code 10
 
     # User function
     # param e Number of engines
     # param s Number of ADLB servers
-    proc init { engines servers } {
+    proc init { args } {
 
+        variable language
+
+        if { [ llength $args ] < 2 } {
+            error "use: turbine::init <engines> <servers> \[<language>\]"
+        }
+        set engines [ lindex $args 0 ]
+        set servers [ lindex $args 1 ]
+        if { [ llength $args ] > 2 } {
+            set language [ lindex $args 2 ]
+        }
+
+        assert_control_sanity $engines $servers
         setup_log_string
-
-        variable error_code
-        set error_code 10
 
         reset_priority
 
@@ -82,6 +97,8 @@ namespace eval turbine {
         } else {
             adlb::init $servers $types
         }
+        assert_sufficient_procs
+
         c::init [ adlb::amserver ] [ adlb::rank ] [ adlb::size ]
 
         setup_mode $engines $servers
@@ -94,15 +111,24 @@ namespace eval turbine {
         argv_init
     }
 
+    proc assert_control_sanity { n_engines n_adlb_servers } {
+        if { $n_engines <= 0 } {
+            error "ERROR: ENGINES==0"
+        }
+        if { $n_adlb_servers <= 0 } {
+            error "ERROR: SERVERS==0"
+        }
+    }
+
     proc setup_mode { engines servers } {
 
-        variable n_adlb_servers
         variable n_engines
         variable n_workers
-        set n_adlb_servers $servers
+        variable n_adlb_servers
+
         set n_engines $engines
         set n_workers [ expr {[ adlb::size ] - $servers - $engines} ]
-
+        set n_adlb_servers $servers
 
         variable mode
 	variable is_engine
@@ -120,24 +146,36 @@ namespace eval turbine {
 
         log "MODE: $mode"
         if { [ adlb::rank ] == 0 } {
-            log "ENGINES: $n_engines"
-            log "SERVERS: $n_adlb_servers"
-            log "WORKERS: $n_workers"
-            set adlb_procs [ adlb::size ]
-            if { $adlb_procs < 3 } {
-              puts "ERROR: too few Turbine processes specified by user:\
-                    $adlb_procs, must be at least 3"
-              exit 1
-            }
+            log_rank_layout
+        }
+    }
 
-            if { $n_adlb_servers <= 0 } {
-                puts "ERROR: SERVERS==0"
-                exit 1
-            }
-            if { $n_workers <= 0 } {
-                puts "ERROR: WORKERS==0"
-                exit 1
-            }
+    proc assert_sufficient_procs { } {
+        if { [ adlb::size ] < 3 } {
+            error "Too few Turbine processes specified by user:\
+                    [adlb::size], must be at least 3"
+        }
+    }
+
+    proc log_rank_layout { } {
+
+        variable n_engines
+        variable n_workers
+        variable n_adlb_servers
+
+        set first_worker $n_engines
+        set first_server [ expr [adlb::size] - $n_adlb_servers ]
+        set last_worker  [ expr $first_server - 1 ]
+        set last_server  [ expr [adlb::size] - 1 ]
+        log [ cat "ENGINES: $n_engines" \
+                  "RANKS: 0 - [ expr $first_worker - 1 ]" ]
+        log [ cat "WORKERS: $n_workers" \
+                  "RANKS: $first_worker - $last_worker" ]
+        log [ cat "SERVERS: $n_adlb_servers" \
+                  "RANKS: $first_server - $last_server" ]
+
+        if { $n_workers <= 0 } {
+            turbine_error "No workers!"
         }
     }
 
@@ -156,7 +194,20 @@ namespace eval turbine {
     }
 
     proc enter_mode { rules engine_startup } {
+        global tcl_version
+        if { $tcl_version >= 8.6 } {
+          try {
+            enter_mode_unchecked $rules $engine_startup
+          } trap {TURBINE ERROR} {msg} {
+              turbine::abort $msg
+          }
+        } else {
+          enter_mode_unchecked $rules $engine_startup
+        }
+    }
 
+    # Inner function without error trapping
+    proc enter_mode_unchecked { rules engine_startup } {
         variable mode
         switch $mode {
             ENGINE  { engine $rules $engine_startup }
@@ -164,6 +215,17 @@ namespace eval turbine {
             WORKER  { worker }
             default { error "UNKNOWN MODE: $mode" }
         }
+    }
+
+    # Signal error that is caused by problem in user code
+    # I.e. that shouldn't include a stacktrace
+    proc turbine_error { msg } {
+        global tcl_version
+      if { $tcl_version >= 8.6 } {
+        throw {TURBINE ERROR} $msg
+      } else {
+        error $msg
+      }
     }
 
     # Turbine logging contains string values (possibly long)
@@ -242,7 +304,9 @@ namespace eval turbine {
         }
     }
 
-    # Error handling
+    # Default error handling for any errors
+    # Provides stack trace if error code is not turbine::error_code
+    #    Thus useful for internal errors
     # msg: A Tcl error message
     # e: A Tcl error dict
     proc fail { msg d } {
@@ -258,6 +322,18 @@ namespace eval turbine {
             puts "CALLING adlb::abort"
             adlb::abort
         }
+    }
+
+    # Preferred error handling for known user errors
+    # Does not provide a stack trace - nice for users
+    # Used by top-level try/trap
+    proc abort { msg } {
+        variable language
+        puts ""
+        puts "$language: $msg"
+        puts ""
+        puts "$language: killing MPI job..."
+        adlb::abort
     }
 
     proc turbine_workers { } {

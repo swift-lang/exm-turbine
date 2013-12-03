@@ -70,7 +70,7 @@ namespace eval turbine {
       for { set i 0 } { $i < $n } { incr i } {
           set d [ blobutils_get_float $p $i ]
           literal t float $d
-          container_immediate_insert $result $i $t integer
+          container_immediate_insert $result $i $t ref
       }
       adlb::refcount_incr $result w -1
       adlb::blob_free $input
@@ -95,8 +95,8 @@ namespace eval turbine {
       set s       [ blobutils_sizeof_float ]
       set L       [ retrieve_decr_blob $b ]
       set p       [ blobutils_cast_int_to_dbl_ptr [ lindex $L 0 ] ]
-      set m_value [ retrieve_integer $m ]
-      set n_value [ retrieve_integer $n ]
+      set m_value [ retrieve_decr_integer $m ]
+      set n_value [ retrieve_decr_integer $n ]
       set length  [ lindex $L 1 ]
 
       # total = m x n

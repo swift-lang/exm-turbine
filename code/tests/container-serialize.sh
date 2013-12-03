@@ -1,3 +1,4 @@
+#!/bin/bash
 # Copyright 2013 University of Chicago and Argonne National Laboratory
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -12,14 +13,24 @@
 # See the License for the specific language governing permissions and
 # limitations under the License
 
-# This file is expected to be regularly edited to control
-# debugging output.  It is sourced by debug-auto.tcl
-# The variable INPUT is converted to an array by debug-auto.tcl
-# Each token maps to ON or OFF to indicate debugging
+# Test CONTAINER-ENUMERATE.TCL
+# WARNING: This test requires GNU sed
 
-set INPUT {
-    TURBINE OFF
-    TCL_TURBINE OFF
-    ADLB OFF
-    CACHE OFF
-}
+THIS=$0
+SCRIPT=${THIS%.sh}.tcl
+OUTPUT=${THIS%.sh}.out
+
+source $( dirname $0 )/setup.sh > ${OUTPUT} 2>&1
+
+set -x
+
+if ! sed --version | grep GNU > /dev/null
+then
+  echo "need GNU sed: skipping this test..."
+  exit 0
+fi
+
+bin/turbine -l -n ${PROCS} ${SCRIPT} >> ${OUTPUT} 2>&1
+[[ ${?} == 0 ]] || exit 1
+
+exit 0

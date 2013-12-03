@@ -61,7 +61,7 @@ namespace eval turbine {
         set lo [ lindex $i 0 ]
         set hi [ lindex $i 1 ]
         rule "$lo $hi" "randint_body $o $lo $hi" \
-            name "randint-$lo-$hi" 
+            name "randint-$lo-$hi"
     }
 
     proc randint_body { o lo hi } {
@@ -75,7 +75,7 @@ namespace eval turbine {
     # This works b/c rand() generates a number in [0.0, 1.0)
     proc randint_impl { lo hi } {
         if { [ expr {$lo >= $hi} ] } {
-            error "randint: empty range \[$lo, $hi)"
+            turbine_error "randint: empty range \[$lo, $hi)"
         }
         set range [ expr {$hi - $lo} ]
         return [ expr {(int(rand() * $range)) + $lo} ]

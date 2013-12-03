@@ -452,7 +452,10 @@ namespace eval turbine {
 
     proc store_blob_string { id value } {
         log "store_blob_string: <$id>=[ log_string $value ]"
-        adlb::store $id blob [ adlb::blob_from_string $value ]
+        set b [ adlb::blob_from_string $value ]
+        adlb::store $id blob $b
+        # Free memory
+        adlb::local_blob_free $b
     }
 
     # Retrieve and cache blob
@@ -539,7 +542,7 @@ namespace eval turbine {
     proc multi_retrieve_decr { ids decr {cachemode CACHED} args } {
       set result [ list ]
 
-      foreach id $ids {
+      /oreach id $ids {
         if { [ string equal $cachemode CACHED ] &&
               [ c::cache_check $id ] } {
           set val [ c::cache_retrieve $id ]

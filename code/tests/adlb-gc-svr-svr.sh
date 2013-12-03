@@ -13,19 +13,45 @@
 # See the License for the specific language governing permissions and
 # limitations under the License
 
+set -x
+
 THIS=$0
 SCRIPT=${THIS%.sh}.tcl
 OUTPUT=${THIS%.sh}.out
 
-source $( dirname $0 )/setup.sh > ${OUTPUT} 2>&1
+# Shouldn't leak any memory
+export ADLB_LEAK_CHECK=true
 
-set -x
+# Force reallocation code paths
+export ADLB_DEBUG_SYNC_BUFFER_SIZE=1
 
-bin/turbine -l -n ${PROCS} ${SCRIPT} >> ${OUTPUT} 2>&1
-[[ ${?} == 0 ]] || exit 1
+# Print out interesting info
+export ADLB_PRINT_TIME=true
+export ADLB_PERF_COUNTERS=true
 
-grep -q "(2,2,howdy,3.14)" ${OUTPUT} || exit 1
-grep -q "Hello World" ${OUTPUT} || exit 1
-grep -q "Void was set" ${OUTPUT} || exit 1
+# Test failed with deadlock - time limit it
+TIME_LIMIT=120
+
+bin/turbine -l -n 8 ${SCRIPT} &> ${OUTPUT} &
+pid=$!
+for i in `seq $TIME_LIMIT`; do
+  sleep 1
+  if ps -p $pid &> /dev/null ; then
+    echo "Woke up... pid $pid still running"
+  else
+    break
+  fi
+done
+
+if ps -p $pid &> /dev/null ; then
+  echo "${TIME_LIMIT}s time limit expired"
+  exit 1  
+fi
+
+wait $pid
+RC=${?}
+[[ ${RC} == 0 ]] || exit 1
+
+grep -q "LEAK" ${OUTPUT} && exit 1
 
 exit 0

@@ -312,7 +312,7 @@ fi
 AC_MSG_RESULT([${MPI_IMPL}])
 AC_SUBST(MPI_IMPL)
 
-# We assume the libmpe.so is in the ADLB directory
+# We assume libmpe.so is in the MPE/lib directory
 # See Turbine - Build for explanation
 ENABLE_MPE=0
 USE_MPE=0
@@ -325,12 +325,14 @@ AC_ARG_WITH(mpe,
 if [[ ${USE_MPE} != 0 ]]
 then
     AC_MSG_RESULT([Enabling MPE]);
-    AC_CHECK_FILE(${USE_MPE}/${LIBMPE})
+    AC_CHECK_FILE(${USE_MPE}/lib/${LIBMPE},,
+                  AC_MSG_ERROR([Could not find MPE!]))
     AC_DEFINE_UNQUOTED(ENABLE_MPE,ENABLE_MPE,[Enables MPE])
 fi
 AC_SUBST(USE_MPE)
 AC_SUBST(ENABLE_MPE)
 
+ENABLE_XPT=yes
 AC_ARG_ENABLE(checkpoint,
      AS_HELP_STRING(
                     [--enable-checkpoint],
@@ -353,7 +355,6 @@ else
     AC_MSG_RESULT([Checkpointing disabled]);
 fi
 AC_SUBST(ENABLE_XPT)
-
 
 USE_ADLB=0
 AC_ARG_WITH(adlb,
@@ -500,17 +501,8 @@ AC_ARG_WITH(tclsh-local,
     ],
     [])
 
-# Set default Tcl version:
-export TCL_VERSION=8.5
-
-AC_ARG_WITH(tcl-version,
-    AS_HELP_STRING([--with-tcl-version], [Tcl version. Default is 8.5]),
-    [
-        TCL_VERSION=${withval}
-    ]
-)
-echo "using Tcl version: ${TCL_VERSION}"
-AC_SUBST(TCL_VERSION)
+# In order from most to least preferred
+TCL_VERSION_PREFS="8.6 8.5"
 
 USE_TCL=0
 # Set USE_TCL
@@ -520,23 +512,46 @@ AC_ARG_WITH(tcl,
         USE_TCL=${withval}
     ],
     [
-        program=$( which tclsh${TCL_VERSION} )
-        if [[ ${?} != 0 ]]
+      AC_MSG_NOTICE([Tcl location not specified, trying to find tclsh on path])
+      for TCLVER in ${TCL_VERSION_PREFS}
+      do
+        AC_MSG_CHECKING([for tclsh${TCLVER} on path])
+        program=$( which tclsh${TCLVER} )
+        if [[ ${?} == 0 ]]
         then
-            AC_MSG_ERROR([Could not find tclsh${TCL_VERSION}!])
+          AC_MSG_RESULT([yes: ${program}])
+          USE_TCL=$( cd $(dirname ${program})/.. ; /bin/pwd )
+          AC_MSG_RESULT([Found Tcl at ${USE_TCL}]);
+          #AC_MSG_RESULT($(basename ${USE_TCLSH_LOCAL}))
+          break
+        else
+          AC_MSG_RESULT([no])
         fi
-        AC_MSG_RESULT([PATH contains: ${program}])
-        USE_TCL=$( cd $(dirname ${program})/.. ; /bin/pwd )
+      done
+
+      if [[ ${USE_TCL} == 0 ]]
+      then
+        AC_MSG_ERROR([Could not find tclsh for any version: ${TCL_VERSION_PREFS}!])
+      fi
     ]
 )
 
-# Set USE_TCL_LIB_DIR: location of libtcl
-LIBTCL=libtcl${TCL_VERSION}.${SO_SUFFIX}
-USE_TCL_LIB_DIR=${USE_TCL}/lib
-if [[ ! -f ${USE_TCL_LIB_DIR}/${LIBTCL} ]]
-then
-  USE_TCL_LIB_DIR=${USE_TCL}/lib64
-fi
+# Sniff out default Tcl version and library path
+TCL_VERSION=0
+
+AC_ARG_WITH(tcl-version,
+    AS_HELP_STRING([--with-tcl-version],
+                   [Tcl version. Minimum is 8.5. If not specified,
+                    use highest version we can find]),
+    [
+        TCL_VERSION=${withval}
+        AC_MSG_NOTICE([specified Tcl version ${TCL_VERSION}])
+        LIBTCL=libtcl${TCL_VERSION}.${SO_SUFFIX}
+    ]
+)
+
+USE_TCL_LIB_DIR=0
+
 
 AC_ARG_WITH(tcl-lib-dir,
     AC_HELP_STRING([--with-tcl-lib-dir],
@@ -546,12 +561,48 @@ AC_ARG_WITH(tcl-lib-dir,
         AC_MSG_RESULT([using Tcl lib dir: ${USE_TCL_LIB_DIR}])
     ])
 
-AC_MSG_CHECKING([for ${LIBTCL} ])
+if [[ ${TCL_VERSION} != 0 ]]
+then
+  # We have locked in a version choice
+  TCL_VERSION_PREFS=${TCL_VERSION}
+fi
+
+
+# Check in order from most to least preferred
+for TCLVER in ${TCL_VERSION_PREFS}
+do
+  
+  if [[ ${USE_TCL_LIB_DIR} == 0 ]]
+  then
+    LIB_DIR_OPTS="${USE_TCL}/lib ${USE_TCL}/lib64"
+  else
+    LIB_DIR_OPTS="${USE_TCL_LIB_DIR}"
+  fi
+  
+  for LIB_DIR in ${LIB_DIR_OPTS}
+  do
+    LIBTCL=libtcl${TCLVER}.${SO_SUFFIX}
+    AC_MSG_CHECKING([for Tcl library at ${LIB_DIR}/${LIBTCL}])
+    if [[ -r ${LIB_DIR}/${LIBTCL} ]]
+    then
+      AC_MSG_RESULT([exists!])
+      TCL_VERSION=${TCLVER}
+      USE_TCL_LIB_DIR=${LIB_DIR}
+      break 2
+    else
+      AC_MSG_RESULT([no])
+    fi
+  done
+done
+
 if [[ ! -r ${USE_TCL_LIB_DIR}/${LIBTCL} ]]
 then
-    AC_MSG_ERROR([could not find ${LIBTCL}!])
+    AC_MSG_ERROR([could not find libtcl!])
 fi
-AC_MSG_RESULT([ok])
+
+echo "using Tcl version: ${TCL_VERSION}"
+AC_SUBST(TCL_VERSION)
+
 
 # Set USE_TCL_CFG_DIR: location of tclConfig.sh
 USE_TCL_CFG_DIR=0
@@ -581,13 +632,16 @@ then
     AC_MSG_ERROR([could not source: ${USR_TCL_CFG_DIR}/tclConfig.sh])
 fi
 
+# TCL_VERSION needed by find-tcl.zsh
+export TCL_VERSION
+
 # Find tclsh binary name (may be tclsh8.5)
 if [[ ${USE_TCLSH_LOCAL} == 0 ]]
 then
     USE_TCLSH=$( maint/find-tcl.zsh ${USE_TCL} )
     if [[ ${?} != 0 ]]
     then
-        AC_MSG_ERROR([Could not find Tcl ${TCL_VERSION} binary!])
+        AC_MSG_ERROR([Could not find Tcl ${TCL_VERSION} binary in ${USE_TCL}!])
     fi
     USE_TCLSH_LOCAL=${USE_TCLSH}
 else
@@ -595,7 +649,7 @@ else
     USE_TCLSH=$( maint/find-tcl.zsh ${USE_TCL} )
     if [[ ${?} != 0 ]]
     then
-        AC_MSG_ERROR([Could not find Tcl ${TCL_VERSION} binary!])
+        AC_MSG_ERROR([Could not find Tcl ${TCL_VERSION} binary at ${USE_TCL}!])
     fi
 fi
 AC_MSG_RESULT([using Turbine Tcl executable: ${USE_TCLSH}])

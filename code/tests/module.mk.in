@@ -6,6 +6,7 @@ TEST_SRC_C += $(DIR)/debug.c
 TEST_SRC_C += $(DIR)/lib-turbine.c
 TEST_SRC_C += $(DIR)/ptasks-1.c
 TEST_SRC_C += $(DIR)/ptasks-bench.c
+TEST_SRC_C += $(DIR)/ptasks-stress.c
 TEST_SRC_C += $(DIR)/checkpoint-1.c
 
 ifeq ($(USE_MPE),1)
@@ -20,6 +21,7 @@ TEST_SRC_TCL := $(DIR)/error.tcl               \
 	        $(DIR)/adlb-exists.tcl         \
 	        $(DIR)/adlb-garbage-collect1.tcl \
 	        $(DIR)/adlb-garbage-collect2.tcl \
+	        $(DIR)/adlb-gc-svr-svr.tcl     \
 	        $(DIR)/adlb-get-fail.tcl       \
 	        $(DIR)/adlb-lookup-fail.tcl    \
 	        $(DIR)/adlb-type-error.tcl     \
@@ -41,6 +43,7 @@ TEST_SRC_TCL := $(DIR)/error.tcl               \
                 $(DIR)/container-enumerate.tcl \
                 $(DIR)/container-close-1.tcl   \
                 $(DIR)/container-close-2.tcl   \
+                $(DIR)/container-serialize.tcl \
                 $(DIR)/container-sum.tcl       \
                 $(DIR)/container-sum2.tcl      \
                 $(DIR)/string_split.tcl        \
@@ -59,6 +62,9 @@ TEST_SRC_TCL := $(DIR)/error.tcl               \
                 $(DIR)/send_rule.tcl           \
                 $(DIR)/deep_rule.tcl           \
                 $(DIR)/deep_rule-2.tcl         \
+                $(DIR)/subscript_rule.tcl      \
+
+#                 $(DIR)/blob-big.tcl            \
 
 ifeq ($(USE_MPE),1)
 	TEST_SRC_TCL += $(DIR)/mpe-3.tcl
