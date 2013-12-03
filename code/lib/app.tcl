@@ -16,7 +16,7 @@
 # Functions for launching external apps
 
 namespace eval turbine {
-    namespace export unpack_args exec_external poll_mock
+    namespace export unpack_args exec_external poll_mock async_exec_coasters
     # Run external appplication
     # cmd: executable to run
     # kwopts: keyword options.  Valid are:
@@ -45,6 +45,37 @@ namespace eval turbine {
             set stderr_dst "2>$dst"
         }
         log "shell: $cmd $args $stdin_src $stdout_dst $stderr_dst"
+        if {[string match "coaster*" $cmd]} {
+            set cmd [string triml $cmd "coaster"]
+            set loop_obj [launch_coaster $cmd $stdin_src $stdout_dst $stderr_dst {*}$args]
+        } else {
+            exec $cmd {*}$args $stdin_src $stdout_dst $stderr_dst
+        }
+    }
+
+    proc async_exec_coasters { outs cmd kwopts callback } {
+        #FIXME: strange behaviour can happen if user args have e.g "<"
+        # or ">" or "|" at start
+
+        # Default to sending stdout/stderr to process stdout/stderr
+        set stdout_dst ">@stdout"
+        set stderr_dst "2>@stderr"
+        set stdin_src "<@stdin"
+
+        if { [ dict exists $kwopts stdin ] } {;
+            set stdin_src "<[ dict get $kwopts stdin ]"
+        }
+        if { [ dict exists $kwopts stdout ] } {
+            set dst [ dict get $kwopts stdout ]
+            ensure_directory_exists2 $dst
+            set stdout_dst ">$dst"
+        }
+        if { [ dict exists $kwopts stderr ] } {
+            set dst [ dict get $kwopts stderr ]
+            ensure_directory_exists2 $dst
+            set stderr_dst "2>$dst"
+        }
+        log "shell: $cmd $callback $stdin_src $stdout_dst $stderr_dst"
         if {[string match "coaster*" $cmd]} {
             set cmd [string triml $cmd "coaster"]
             set loop_obj [launch_coaster $cmd $stdin_src $stdout_dst $stderr_dst {*}$args]

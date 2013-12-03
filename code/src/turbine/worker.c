@@ -104,7 +104,7 @@ turbine_worker_loop(Tcl_Interp* interp, void* buffer, int buffer_size,
             }
             if ( code == ADLB_NOTHING && current_slots == 0)
             {
-                printf("ADLB_NOTHING returned : NO More work! \n");
+                printf("ADLB_NOTHING returned : No More work! \n");
                 break;
             }
         }

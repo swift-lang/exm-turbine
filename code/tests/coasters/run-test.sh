@@ -2,6 +2,10 @@
 
 export TCLLIBPATH=/homes/yadunand/swift-trunk/cog/modules/provider-coaster-c-client/tcl
 export TURBINE_USER_LIB=$TCLLIBPATH
+export TURBINE_INSTALL=/homes/yadunand/bin/exm-trunk/sfw/turbine/branches/issue-503/code
+TURBINE=/homes/yadunand/bin/exm-trunk/sfw/turbine/branches/issue-503/code/bin
+STC=/homes/yadunand/bin/exm-trunk/sfw/stc/branches/issue-526/code/bin
+export PATH=$TURBINE:$STC:$PATH
 
 if [[ $1 == "all" ]] ; then
     SOURCE=`ls *swift`
@@ -23,6 +27,9 @@ do
     echo "Compiling $1"
     stc $test_case > $BASE.tcl
     [[ "$?" != 0 ]] && echo "Compile failed"
+
+    # Correct one line for working with older turbine ?
+    sed -i '/^turbine/s/\ \"Swift\"//' $BASE.tcl
 
     turbine -n 3 $BASE.tcl
     [[ "$?" != 0 ]] && echo "Execution failed"
