@@ -69,7 +69,7 @@ namespace eval turbine {
       set stderr_dst "2>$dst"
     }
   }
-  
+
   # Launch a coasters job that will execute asynchronously
   # cmd: command to run
   # outfiles: list of output files
@@ -79,15 +79,22 @@ namespace eval turbine {
   # continuation: optionally, a code fragment to run after finishing the
   #         task.  TODO: may want to assume that this is a function call
   #         so we can concatenate any output arguments to string?
-  proc async_exec_coasters { cmd outfiles cmdargs kwopts {continuation {}}} {
+  proc async_exec_coasters { outfiles cmds kwopts {continuation {}}} {
     setup_redirects $kwopts stdin_src stdout_dst stderr_dst
-    
     # Check to see if we were passed continuation
-    set has_continuation [ expr [ string length $continuation ] > 0 ]
+    set cmd  [lindex $cmds 0]
+    set args [lrange $cmds 1 end]
 
+    log "cmds     : $cmds"
+    log "cmd     : $cmd "
+    log "args    : {*}$args"
+    log "outfile : $outfiles"
+    log "kwopts  : $kwopts"
+    log "continuation : $continuation"
 
+    # TODO : This is not necessary, remove
     set cmd [string triml $cmd "coaster"]
-    set loop_obj [launch_coaster $cmd $stdin_src $stdout_dst $stderr_dst {*}$args]
+    set loop_obj [launch_coaster $cmd $stdin_src $stdout_dst $stderr_dst [list $continuation] {*}$args]
   }
 
   proc poll_mock { } {
@@ -114,6 +121,8 @@ namespace eval turbine {
         if {$status == 7} {
           cleanup_coaster $loop_ptr $client_ptr $job_ptr
           puts "MOCK_POLL : Job Succeeded, Removing from list"
+            eval {*}$continuation
+          puts "MOCK_POLL : Continuation : $continuation "
           dict unset g_job_info $id
         } elseif {$status == 5} {
           cleanup_coaster $loop_ptr $client_ptr $job_ptr
@@ -139,9 +148,9 @@ namespace eval turbine {
   }
 
   #Issue #503
-  proc launch_coaster { cmd stdin_src stdout_dst stderr_dst args} {
-    log "exec_coaster: cmd : $cmd"
-    log "exec_coaster: args : $args"
+  proc launch_coaster { cmd stdin_src stdout_dst stderr_dst continuation args} {
+    log "launch_coaster: cmd  : $cmd"
+    log "launch_coaster: args : $args"
 
     set stdout_dst [string trim $stdout_dst <>]
     if { $stdout_dst == "@stdout" } {
@@ -186,6 +195,7 @@ namespace eval turbine {
     dict set g_job_info $g_job_count loop_ptr $loop_ptr
     dict set g_job_info $g_job_count client_ptr $client_ptr
     dict set g_job_info $g_job_count job_ptr $job1
+    dict set g_job_info $g_job_count continuation [list $continuation]
     incr g_job_count
     return job1
   }
