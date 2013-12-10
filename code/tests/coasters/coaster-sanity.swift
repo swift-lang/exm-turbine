@@ -1,12 +1,14 @@
 import string;
 import files;
 
+@dispatch=coasters
 app (file out) hello (){
     "/bin/echo" @stdout=out;
 }
 
+@dispatch=coasters
 app (file out) hello_coaster (){
-    "coaster/bin/echo" @stdout=out;
+    "/bin/echo" @stdout=out;
 }
 
 /**

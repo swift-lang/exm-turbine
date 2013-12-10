@@ -4,7 +4,6 @@ import files;
 // SKIP-THIS-TEST
 // Work in progress on coasters
 
-
 /*
 @dispatch=coasters
     app () echo (string arg) {
@@ -18,7 +17,7 @@ import files;
 }
 
 main {
-    //    echo("HELLO COASTERS");
+    //echo("HELLO COASTERS");
     string x = read(echo2(["hello", "world"]));
     assertEqual(x, "hello world", "echo2");
 }

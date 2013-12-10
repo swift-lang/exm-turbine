@@ -1,6 +1,6 @@
 #!/bin/bash
 
-DIR=/homes/yadunand/bin
+DIR=$PWD
 echo "$DIR/test5.0.out"
 [[ -s "$DIR/test5.0.out" ]] \
     && echo "test5.0.out present : PASS" \

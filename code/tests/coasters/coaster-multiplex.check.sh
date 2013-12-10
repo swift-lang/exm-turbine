@@ -1,9 +1,9 @@
 #!/bin/bash
 
-sleep 3
-ls /homes/yadunand/bin/test*
-cat /homes/yadunand/bin/test*
-rm /homes/yadunand/bin/test* &> /dev/null
+sleep 2
+ls  ./multiplex-test*
+cat ./multiplex-test*
+#rm /homes/yadunand/bin/test* &> /dev/null
 
 exit 0
 DIR=/homes/yadunand/bin

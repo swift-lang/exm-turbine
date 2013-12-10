@@ -31,7 +31,7 @@ do
     # Correct one line for working with older turbine ?
     sed -i '/^turbine/s/\ \"Swift\"//' $BASE.tcl
 
-    turbine -n 3 $BASE.tcl
+    turbine -n 3 $BASE.tcl -d=$PWD
     [[ "$?" != 0 ]] && echo "Execution failed"
 
     if [[ -x $BASE.check.sh ]]
