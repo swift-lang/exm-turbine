@@ -85,7 +85,6 @@ namespace eval turbine {
     set cmd  [lindex $cmds 0]
     set args [lrange $cmds 1 end]
 
-    log "cmds     : $cmds"
     log "cmd     : $cmd "
     log "args    : {*}$args"
     log "outfile : $outfiles"
@@ -94,7 +93,7 @@ namespace eval turbine {
 
     # TODO : This is not necessary, remove
     set cmd [string triml $cmd "coaster"]
-    set loop_obj [launch_coaster $cmd $stdin_src $stdout_dst $stderr_dst [list $continuation] {*}$args]
+    set loop_obj [launch_coaster $cmd $stdin_src $stdout_dst $stderr_dst $continuation {*}$args]
   }
 
   proc poll_mock { } {
@@ -121,8 +120,8 @@ namespace eval turbine {
         if {$status == 7} {
           cleanup_coaster $loop_ptr $client_ptr $job_ptr
           puts "MOCK_POLL : Job Succeeded, Removing from list"
-            eval {*}$continuation
           puts "MOCK_POLL : Continuation : $continuation "
+          eval $continuation
           dict unset g_job_info $id
         } elseif {$status == 5} {
           cleanup_coaster $loop_ptr $client_ptr $job_ptr
@@ -195,7 +194,7 @@ namespace eval turbine {
     dict set g_job_info $g_job_count loop_ptr $loop_ptr
     dict set g_job_info $g_job_count client_ptr $client_ptr
     dict set g_job_info $g_job_count job_ptr $job1
-    dict set g_job_info $g_job_count continuation [list $continuation]
+    dict set g_job_info $g_job_count continuation $continuation
     incr g_job_count
     return job1
   }
