@@ -173,7 +173,11 @@ namespace eval turbine {
     log "exec_coaster: Error code from CoasterSWIGClientSettings $x"
 
     # Job stuff
-    set job1 [CoasterSWIGJobCreate $cmd]
+    # TODO: The second parameter is the jobmanager. 
+    # "local?"  use the workers already connected to the coaster service.
+    # "fork" fork tasks as processes on the node coaster service runs
+    # Other jobmanagers not defined.
+    set job1 [CoasterSWIGJobCreate $cmd "local"]
 
     #CoasterSWIGJobSettings job_obj dir args attributes env_vars stdout_loc stderr_loc"
     log "exec_coaster : CoasterSWIGJobSettings $job1 \"\" $args \"\" \"\" $stdout_dst $stderr_dst "
