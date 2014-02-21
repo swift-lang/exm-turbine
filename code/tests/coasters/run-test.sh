@@ -19,6 +19,9 @@ else
 fi
 
 rm RESULT &> /dev/null
+
+#export VALGRIND=valgrind
+export VALGRIND=""
 for test_case in ${SOURCE[*]}
 do
     BASE=${test_case%.swift}
@@ -31,8 +34,22 @@ do
     # Correct one line for working with older turbine ?
     sed -i '/^turbine/s/\ \"Swift\"//' $BASE.tcl
 
+    #strace -f turbine -n 3 $BASE.tcl -d=$PWD
     turbine -n 3 $BASE.tcl -d=$PWD
-    [[ "$?" != 0 ]] && echo "Execution failed"
+    STATUS="$?"
+
+    if [[ "$STATUS" == 0 ]]
+    then
+        echo "STATUS: SUCCESS - $BASE.swift"
+    else
+        echo "STATUS: FAIL - $BASE.swift"
+    fi
+
+    #TURBINE_PID=$!
+    #echo "TURBINE PID : $TURBINE_PID"
+    #exit 0
+
+    #[[ "$STATUS" == 124 ]] && echo "Execution timed out $BASE.swift"
 
     if [[ -x $BASE.check.sh ]]
     then

@@ -12,7 +12,7 @@ app (file out, file err) bashing (file foo) {
 
 @dispatch=coasters
 app (file out, file err) wc (file foo) {
-   "/bin/wc" "-l" foo @stderr=err @stdout=out;
+   "/usr/bin/wc" foo @stderr=err @stdout=out;
 }
 
 /**
