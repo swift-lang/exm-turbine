@@ -79,21 +79,25 @@ namespace eval turbine {
   # continuation: optionally, a code fragment to run after finishing the
   #         task.  TODO: may want to assume that this is a function call
   #         so we can concatenate any output arguments to string?
-  proc async_exec_coasters { outfiles cmds kwopts {continuation {}}} {
+  #proc async_exec_coasters { outfiles cmds kwopts {continuation {}}} { }
+  proc async_exec_coasters {  cmd outfiles cmdargs kwopts {continuation {}} } {
     setup_redirects $kwopts stdin_src stdout_dst stderr_dst
     # Check to see if we were passed continuation
-    set cmd  [lindex $cmds 0]
-    set args [lrange $cmds 1 end]
+    set has_continuation [ expr [ string length $continuation ] > 0 ]
+    #set cmd  [lindex $cmds 0]
+    #set args [lrange $cmds 1 end]
+    set args $cmdargs
 
     log "cmd     : $cmd "
-    log "args    : {*}$args"
+    #log "args    : {*}$args"
+    log "args    : $cmdargs"
     log "outfile : $outfiles"
     log "kwopts  : $kwopts"
-    log "continuation : $continuation"
+    log "continuation : $continuation $has_continuation"
 
     # TODO : This is not necessary, remove
     set cmd [string triml $cmd "coaster"]
-    set loop_obj [launch_coaster $cmd $stdin_src $stdout_dst $stderr_dst $continuation {*}$args]
+    set loop_obj [launch_coaster $cmd $stdin_src $stdout_dst $stderr_dst $continuation $cmdargs]
   }
 
   proc poll_mock { } {
@@ -138,7 +142,7 @@ namespace eval turbine {
 
 
   proc poll_job_status { loop_ptr client_ptr job } {
-    set rcode1 [CoasterSWIGGetJobStatus $client_ptr $job1]
+    set rcode1 [CoasterSWIGGetJobStatus $cl'2ient_ptr $job1]
   }
 
   proc cleanup_coaster { loop_ptr client_ptr job1 } {
