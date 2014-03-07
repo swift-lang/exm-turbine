@@ -4,10 +4,14 @@ use strict;
 use warnings;
 use File::Basename;
 
+sub debug {
+   print "@_\n";
+}
+
 my %properties = ();		# Hash storing all swift properties
 my @property_files = ();	# List of swift property files to be read
 my $service = $ARGV[0];
-if (!defined($service) || $service eq "-help") { 
+if (!defined($service) || $service eq "-help") {
    print STDERR "Usage: $0 service\n";
    exit 1;
 }
@@ -46,23 +50,26 @@ if( ! -d $swift_etc_directory ) { die "Unable to find a valid Swift installation
 
 # Set property values
 foreach my $property_file(@property_files) {
+   debug("opening: $property_file");
    open(PROPERTIES, $property_file) || die "Unable to open $property_file";
 
    while( <PROPERTIES> ) {
       chomp;
+      print "line: $_\n";
       next if /^\s*#/ || /^(\s)*$/; # Ignore blank lines and comments
       $_ =~ s/^\s+//;               # Remove leading whitespace
 
-      # Handle brackets 
-      if( /^site\.|^service\./ && /{/ ) { 
+      # Handle brackets
+      if( /^site\.|^service\./ && /{/ ) {
          my $prefix = (split /\s+{/)[0];
          while( <PROPERTIES> ) {
             chomp;
-            next if /^\s*#/ || /^(\s)*$/; 
-            $_ =~ s/^\s+//;               
-            if( /^}/ ) { last; } 
+            next if /^\s*#/ || /^(\s)*$/;
+            $_ =~ s/^\s+//;
+            if( /^}/ ) { last; }
             my ($key, $value) = split('=', ($prefix . ".$_"), 2);
             if($key eq "sites") { $key = "site"; }
+            print "value: $value\n";
             $value =~ s/\$(\w+)/$ENV{$1}/g;
             $properties{ $key } = $value;
          }
@@ -78,10 +85,14 @@ foreach my $property_file(@property_files) {
 }
 
 foreach my $key (sort keys %properties) {
-   if($key =~ m/service\.$service/ ) { 
+   if($key =~ m/service\.$service/ ) {
       my $val = (split /\./, $key)[-1];
       if ( defined( $conversionTable{ lc( $val )})) {
          print "export $conversionTable{lc($val)}=\"$properties{$key}\"\n";
       }
    }
 }
+
+## Local Variables:
+## perl-indent-level: 3
+## End:
