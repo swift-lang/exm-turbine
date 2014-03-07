@@ -12,7 +12,7 @@ import files;
 */
 
 @dispatch=coasters
-    app (file out) echo2 (string args[]) {
+app (file out) echo2 (string args[]) {
   "echo" args @stdout=out
 }
 

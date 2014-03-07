@@ -42,7 +42,7 @@ turbine_worker_loop(Tcl_Interp* interp, void* buffer, size_t buffer_size,
                     int work_type)
 {
     int rc;
-    int max_slots = 5;
+    int max_slots = 50;
     int current_slots = 1; // Must be >0 and < max_slots
     Tcl_Obj* active_slots;
     int adlb_first_get_flag = 1;

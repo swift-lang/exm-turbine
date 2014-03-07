@@ -80,23 +80,19 @@ namespace eval turbine {
   #         task.  TODO: may want to assume that this is a function call
   #         so we can concatenate any output arguments to string?
   #proc async_exec_coasters { outfiles cmds kwopts {continuation {}}} { }
+  #The control flow goes like this ->
+  # STC generated TCL code -> async_exec_coasters -> launch_coaster
   proc async_exec_coasters {  cmd outfiles cmdargs kwopts {continuation {}} } {
     setup_redirects $kwopts stdin_src stdout_dst stderr_dst
     # Check to see if we were passed continuation
     set has_continuation [ expr [ string length $continuation ] > 0 ]
-    #set cmd  [lindex $cmds 0]
-    #set args [lrange $cmds 1 end]
-    set args $cmdargs
 
     log "cmd     : $cmd "
-    #log "args    : {*}$args"
     log "args    : $cmdargs"
     log "outfile : $outfiles"
     log "kwopts  : $kwopts"
     log "continuation : $continuation $has_continuation"
 
-    # TODO : This is not necessary, remove
-    set cmd [string triml $cmd "coaster"]
     set loop_obj [launch_coaster $cmd $stdin_src $stdout_dst $stderr_dst $continuation $cmdargs]
   }
 
@@ -120,7 +116,7 @@ namespace eval turbine {
     foreach {id info} $g_job_info {
       dict with info {
         set status [CoasterSWIGGetJobStatus $client_ptr $job_ptr]
-        puts "MOCK_POLL : JOB_ID( $id ) : $status_string($status)"
+        #puts "MOCK_POLL : JOB_ID( $id ) : $status_string($status)"
         if {$status == 7} {
           cleanup_coaster $loop_ptr $client_ptr $job_ptr
           puts "MOCK_POLL : Job Succeeded, Removing from list"
@@ -157,38 +153,46 @@ namespace eval turbine {
 
     set stdout_dst [string trim $stdout_dst <>]
     if { $stdout_dst == "@stdout" } {
-      log "exec_coaster : stdout not defined, setting to empty"
+      log "launch_coaster : stdout not defined, setting to empty"
       set stdout_dst ""
     }
-    log "exec_coaster: stdout_dst : $stdout_dst"
+    log "launch_coaster: stdout_dst : $stdout_dst"
 
     set stderr_dst [string trim $stderr_dst 2>]
     if { $stderr_dst == "2>@stderr" } {
-      log "exec_coaster : stdout not defined, setting to empty"
+      log "launch_coaster : stdout not defined, setting to empty"
       set stderr_dst ""
     }
-    log "exec_coaster: stderr_dst : $stderr_dst"
+    log "launch_coaster: stderr_dst : $stderr_dst"
 
     package require coaster 0.0
+    # TODO : Handle these env variables not being set
+    set coaster_service_url $::env(COASTER_SERVICE_URL)
+    set coaster_settings    $::env(COASTER_SETTINGS)
+    set coaster_jobmanager  $::env(COASTER_JOBMANAGER)
+    log "launch_coaster: COASTER_SERVICE_URL = $coaster_service_url"
+    log "launch_coaster: COASTER_SETTINGS    = $coaster_settings"
+    log "launch_coaster: COASTER_JOBMANAGER  = $coaster_jobmanager"
 
     set loop_ptr [CoasterSWIGLoopCreate]
-    set client_ptr [CoasterSWIGClientCreate $loop_ptr 127.0.0.1:53001]
-    set x [CoasterSWIGClientSettings $client_ptr "SLOTS=1,MAX_NODES=1,JOBS_PER_NODE=2,WORKER_MANAGER=passive"]
-    log "exec_coaster: Error code from CoasterSWIGClientSettings $x"
+    set client_ptr [CoasterSWIGClientCreate $loop_ptr $coaster_service_url]
+    set x [CoasterSWIGClientSettings $client_ptr $coaster_settings]
+    log "launch_coaster: Error code from CoasterSWIGClientSettings $x"
 
     # Job stuff
-    # TODO: The second parameter is the jobmanager. 
+    # TODO: The second parameter is the jobmanager.
     # "local?"  use the workers already connected to the coaster service.
     # "fork" fork tasks as processes on the node coaster service runs
     # Other jobmanagers not defined.
-    set job1 [CoasterSWIGJobCreate $cmd "local"]
+    set job1 [CoasterSWIGJobCreate $cmd $coaster_jobmanager]
+    #set job1 [CoasterSWIGJobCreate $cmd "fork"]
 
     #CoasterSWIGJobSettings job_obj dir args attributes env_vars stdout_loc stderr_loc"
-    log "exec_coaster : CoasterSWIGJobSettings $job1 \"\" $args \"\" \"\" $stdout_dst $stderr_dst "
+    log "launch_coaster : CoasterSWIGJobSettings $job1 \"\" $args \"\" \"\" $stdout_dst $stderr_dst "
     set rcode [CoasterSWIGJobSettings $job1 "" $args "" "" $stdout_dst $stderr_dst]
 
     set rcode [CoasterSWIGSubmitJob $client_ptr $job1]
-    log "exec_coaster: Job1 submitted"
+    log "launch_coaster: Job1 submitted"
 
     # Inset the new job pointers to the global dict
     # TODO : make this a proc
@@ -204,10 +208,12 @@ namespace eval turbine {
     dict set g_job_info $g_job_count job_ptr $job1
     dict set g_job_info $g_job_count continuation $continuation
     incr g_job_count
+    log "Current job count : $g_job_count"
     return job1
   }
 
   #Issue #501
+  # [TODO] This proc is deprecated, and replaced by launch_coaster
   proc exec_coaster { cmd stdin_src stdout_dst stderr_dst args} {
     log "exec_coaster: cmd : $cmd"
     log "exec_coaster: args : $args"
@@ -230,7 +236,9 @@ namespace eval turbine {
 
     set loop_ptr [CoasterSWIGLoopCreate]
     set client_ptr [CoasterSWIGClientCreate $loop_ptr 127.0.0.1:53001]
-    set x [CoasterSWIGClientSettings $client_ptr "SLOTS=1,MAX_NODES=1,JOBS_PER_NODE=2,WORKER_MANAGER=passive"]
+    set coaster_settings $::env(COASTER_SETTINGS)
+    log "COASTER_SETTINGS = [$coaster_settings]"
+    set x [CoasterSWIGClientSettings $client_ptr $coaster_settings]
     log "exec_coaster: Error code from CoasterSWIGClientSettings $x"
 
     # Job stuff
