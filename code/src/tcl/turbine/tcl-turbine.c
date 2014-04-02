@@ -63,13 +63,12 @@
 #include "src/tcl/r/tcl-r.h"
 
 #define TURBINE_ADLB_WORK_TYPE_WORK 0
-#define TURBINE_ADLB_WORK_TYPE_CONTROL 1
 
 static int
 turbine_extract_ids(Tcl_Interp* interp, Tcl_Obj *const objv[],
             Tcl_Obj* list, int max,
-            turbine_datum_id* ids, int* id_count,
-            td_sub_pair* id_subs, int* id_sub_count);
+            adlb_datum_id* ids, int* id_count,
+            adlb_datum_id_sub* id_subs, int* id_sub_count);
 
 /**
    @see TURBINE_CHECK
@@ -183,17 +182,7 @@ log_setup(int rank)
 static void
 set_namespace_constants(Tcl_Interp* interp)
 {
-  tcl_set_integer(interp, "::turbine::LOCAL",   TURBINE_ACTION_LOCAL);
-  tcl_set_integer(interp, "::turbine::CONTROL", TURBINE_ACTION_CONTROL);
-  tcl_set_integer(interp, "::turbine::WORK",    TURBINE_ACTION_WORK);
-}
-
-static int
-Turbine_Engine_Init_Cmd(ClientData cdata, Tcl_Interp *interp,
-                        int objc, Tcl_Obj *const objv[])
-{
-  turbine_engine_init();
-  return TCL_OK;
+  tcl_set_integer(interp, "::turbine::WORK", TURBINE_ADLB_WORK_TYPE_WORK);
 }
 
 static int
@@ -236,7 +225,7 @@ static inline void rule_set_name_default(char* name, int size,
 struct rule_opts
 {
   char* name;
-  turbine_action_type type;
+  int work_type;
   int target;
   int parallelism;
 };
@@ -254,8 +243,7 @@ rule_opts_from_list(Tcl_Interp* interp, Tcl_Obj *const objv[],
 
 /**
    usage:
-   OLD rule name [ list inputs ] action_type target parallelism action => id
-   NEW rule [ list inputs ] action [ name ... ] [ action_type ... ]
+   rule [ list inputs ] action [ name ... ] [ work_type ... ]
                                    [ target ... ] [ parallelism ... ]
              keyword args are optional
    DEFAULTS: name=<first token of action plus output list>
@@ -304,11 +292,12 @@ Turbine_Rule_Cmd(ClientData cdata, Tcl_Interp* interp,
   rc = turbine_extract_ids(interp, objv, objv[1], TCL_TURBINE_MAX_INPUTS,
               input_list, &inputs, input_pair_list, &input_pairs);
   TCL_CHECK_MSG(rc, "could not parse inputs list as ids or id/subscript "
-                "pairs:\n in rule: <%"PRId64"> %s inputs: \"%s\"",
-                id, opts.name, Tcl_GetString(objv[1]));
+                "pairs:\n in rule: %s inputs: \"%s\"",
+                opts.name, Tcl_GetString(objv[1]));
+
 
   adlb_code ac = ADLB_Put_rule(action, action_len, opts.target,
-        opts.answer, opts.type, ADLB_curr_priority, opts.parallelism,
+        adlb_comm_rank, opts.work_type, ADLB_curr_priority, opts.parallelism,
         opts.name, input_list, inputs, input_pair_list, input_pairs);
   TCL_CONDITION(ac == ADLB_SUCCESS, "could not process rule!");
   return TCL_OK;
@@ -324,7 +313,7 @@ rule_set_opts_default(struct rule_opts* opts,
     assert(opts->name != NULL);
     rule_set_name_default(opts->name, buffer_size, action);
   }
-  opts->type = TURBINE_ACTION_LOCAL;
+  opts->work_type = TURBINE_ADLB_WORK_TYPE_WORK;
   opts->target = TURBINE_RANK_ANY;
   opts->parallelism = 1;
 }
@@ -441,7 +430,7 @@ rule_opt_from_kv(Tcl_Interp* interp, Tcl_Obj *const objv[],
         int t;
         rc = Tcl_GetIntFromObj(interp, val, &t);
         TCL_CHECK_MSG(rc, "type argument must be integer");
-        opts->type = t;
+        opts->work_type = t;
         return TCL_OK;
       }
       break;
@@ -449,91 +438,6 @@ rule_opt_from_kv(Tcl_Interp* interp, Tcl_Obj *const objv[],
 
   TCL_RETURN_ERROR("rule options: unknown key: %s", k);
   return TCL_ERROR; // unreachable
-}
-
-static int
-Turbine_Push_Cmd(ClientData cdata, Tcl_Interp *interp,
-                  int objc, Tcl_Obj *const objv[])
-{
-  TCL_ARGS(1);
-  turbine_code code = turbine_rules_push();
-  TURBINE_CHECK(code, "failure while pushing rules");
-  return TCL_OK;
-}
-
-/*
-  Pop a ready transform. All arguments are output arguments
-  turbine::pop_or_break <transform id> <type> <action> <priority> <target>
-  If no ready transform, will return TCL_BREAK to signal this
-  condition.
- */
-static int
-Turbine_Pop_Or_Break_Cmd(ClientData cdata, Tcl_Interp *interp,
-                int objc, Tcl_Obj *const objv[])
-{
-  TCL_ARGS(7);
-
-  turbine_transform_id transform_id;
-  turbine_action_type type;
-  char *action;
-  int priority;
-  int target;
-  int parallelism;
-
-  turbine_code code = turbine_pop(&type, &transform_id, &action,
-                                  &priority, &target, &parallelism);
-  TCL_CONDITION(code == TURBINE_SUCCESS, "could not pop transform id");
-  if (type == TURBINE_ACTION_NULL)
-  {
-    DEBUG_TURBINE("No ready transforms, sending TCL_BREAK signal");
-    return TCL_BREAK;
-  }
-
-  Tcl_ObjSetVar2(interp, objv[1], NULL, Tcl_NewWideIntObj(transform_id),
-                 EMPTY_FLAG);
-  Tcl_ObjSetVar2(interp, objv[2], NULL, Tcl_NewIntObj(type),
-                 EMPTY_FLAG);
-  Tcl_ObjSetVar2(interp, objv[3], NULL, Tcl_NewStringObj(action, -1),
-                 EMPTY_FLAG);
-  free(action);
-  Tcl_ObjSetVar2(interp, objv[4], NULL, Tcl_NewIntObj(priority), EMPTY_FLAG);
-  Tcl_ObjSetVar2(interp, objv[5], NULL, Tcl_NewIntObj(target), EMPTY_FLAG);
-  Tcl_ObjSetVar2(interp, objv[6], NULL, Tcl_NewIntObj(parallelism), EMPTY_FLAG);
-  return TCL_OK;
-}
-
-/**
-  turbine::close <id> [<subscript>]
-  Handle close notification message
- */
-static int
-Turbine_Close_Cmd(ClientData cdata, Tcl_Interp *interp,
-                  int objc, Tcl_Obj *const objv[])
-{
-  TCL_CONDITION(objc == 2 || objc == 3,
-                "turbine::close requires 1 or 2 args!");
-
-  turbine_datum_id id;
-  int error = Tcl_GetADLB_ID(interp, objv[1], &id);
-  TCL_CHECK(error);
-
-  if (objc == 2)
-  {
-    turbine_code code = turbine_close(id);
-    TCL_CONDITION(code == TURBINE_SUCCESS,
-                  "could not close datum id: %"PRId64"", id);
-  }
-  else
-  {
-    int sub_strlen;
-    const char *sub = Tcl_GetStringFromObj(objv[2], &sub_strlen);
-    size_t sub_len = (size_t) sub_strlen + 1; // Account for null byte
-    turbine_code code = turbine_sub_close(id, sub, sub_len);
-    TCL_CONDITION(code == TURBINE_SUCCESS,
-                  "could not close %"PRId64"[\"%s\"]", id, sub);
-  }
-
-  return TCL_OK;
 }
 
 static int
@@ -1146,13 +1050,9 @@ Tclturbine_Init(Tcl_Interp* interp)
   Blob_Init(interp);
 
   COMMAND("init",        Turbine_Init_Cmd);
-  COMMAND("engine_init", Turbine_Engine_Init_Cmd);
   COMMAND("version",     Turbine_Version_Cmd);
   COMMAND("rule",        Turbine_Rule_Cmd);
   COMMAND("ruleopts",    Turbine_RuleOpts_Cmd);
-  COMMAND("push",        Turbine_Push_Cmd);
-  COMMAND("pop_or_break",Turbine_Pop_Or_Break_Cmd);
-  COMMAND("close",       Turbine_Close_Cmd);
   COMMAND("log",         Turbine_Log_Cmd);
   COMMAND("normalize",   Turbine_Normalize_Cmd);
   COMMAND("worker_loop", Turbine_Worker_Loop_Cmd);

@@ -37,6 +37,10 @@ static void task_error(Tcl_Interp* interp, int tcl_rc, char* command);
 #define service_log(format, args...) \
   log_printf("TURBINE_WORKER_SERVICE: " format, ## args)
 
+/*
+  Main worker loop
+  TODO: priority isn't inherited from parent tasks
+ */
 turbine_code
 turbine_worker_loop(Tcl_Interp* interp, void* buffer, size_t buffer_size,
                     int work_type)

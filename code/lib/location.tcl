@@ -18,14 +18,8 @@
 namespace eval turbine {
 
   proc random_worker { } {
-    # Engines are allocated to first ranks
-    set eng [ turbine_engines ]
-    return [ randint_impl $eng [ expr {$eng + [ turbine_workers ]} ] ]
-  }
-
-  proc random_engine { } {
-    # Engines are allocated to first ranks
-    return [ randint_impl 0 [ turbine_engines ] ]
+    # Workers are allocated to first ranks
+    return [ randint_impl 0 $turbine_workers ] ]
   }
 
   proc check_rank { rank } {
@@ -40,13 +34,6 @@ namespace eval turbine {
       WORKER {
         foreach rank $ranklist {
           if [ rank_is_worker $rank ] {
-            lappend filtered $rank
-          }
-        }
-      }
-      ENGINE {
-        foreach rank $ranklist {
-          if [ rank_is_engine $rank ] {
             lappend filtered $rank
           }
         }
@@ -70,19 +57,13 @@ namespace eval turbine {
 
   proc rank_is_worker { rank } {
     check_rank $rank
-    set eng [ turbine_engines ]
-    return [ expr {$rank >= $eng && $rank < $eng + [ turbine_workers ] } ]
-  }
-
-  proc rank_is_engine { rank } {
-    check_rank $rank
-    return [ expr {$rank < [ turbine_engines ] } ]
+    return [ expr {$rank >= 0 && $rank < [ turbine_workers ] } ]
   }
 
   proc rank_is_server { rank } {
     check_rank $rank
     # servers are allocated to topmost ranks
-    return [ expr {$rank >= [ turbine_engines ] + [ turbine_workers ]} ]
+    return [ expr {$rank >= [ turbine_workers ]} ]
   }
 
   proc hostmap_list { results input } {
