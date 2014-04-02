@@ -20,7 +20,7 @@ namespace eval turbine {
   proc random_worker { } {
     variable n_workers
     # Workers are allocated to first ranks
-    return [ randint_impl 0 $n_workers ] ]
+    return [ randint_impl 0 $n_workers ]
   }
 
   proc check_rank { rank } {
