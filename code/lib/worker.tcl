@@ -22,7 +22,7 @@ namespace eval turbine {
     # Main worker loop
     proc worker { rules startup_cmd } {
         
-        eval $startup
+        eval $startup_cmd
         if { [ adlb::rank ] == 0 } {
             # First rank should start execution
             eval $rules
