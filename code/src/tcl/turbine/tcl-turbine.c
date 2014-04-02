@@ -272,29 +272,17 @@ Turbine_Rule_Cmd(ClientData cdata, Tcl_Interp* interp,
   TCL_CONDITION(objc >= BASIC_ARGS,
                 "turbine::c::rule requires at least %i args!",
                 BASIC_ARGS);
-
-  /* Intercept calls to rule not on engine and send to engine.
-     Need to call back into turbine::spawn_rule with same arguments,
-     which is defined in Tcl
-   */
-  if (!turbine_is_engine())
-  {
-    Tcl_Obj *newObjv[objc];
-    memcpy(newObjv, objv, sizeof(newObjv));
-    newObjv[0] = SPAWN_RULE_CMD;
-    return Tcl_EvalObjv(interp, objc, newObjv, 0);
-  }
-
   int rc;
-  turbine_transform_id id;
   int inputs = 0, input_pairs = 0;
-  turbine_datum_id input_list[TCL_TURBINE_MAX_INPUTS];
-  td_sub_pair input_pair_list[TCL_TURBINE_MAX_INPUTS];
+  adlb_datum_id input_list[TCL_TURBINE_MAX_INPUTS];
+  adlb_datum_id_sub input_pair_list[TCL_TURBINE_MAX_INPUTS];
   char name_buffer[TURBINE_NAME_MAX];
 
   // Get the action string
-  char* action = Tcl_GetStringFromObj(objv[2], NULL);
+  int action_len;
+  char* action = Tcl_GetStringFromObj(objv[2], &action_len);
   assert(action);
+  action_len++; // Include null terminator
 
   struct rule_opts opts = {NULL, 0, 0, 0};
 
@@ -319,11 +307,10 @@ Turbine_Rule_Cmd(ClientData cdata, Tcl_Interp* interp,
                 "pairs:\n in rule: <%"PRId64"> %s inputs: \"%s\"",
                 id, opts.name, Tcl_GetString(objv[1]));
 
-  turbine_code code =
-      turbine_rule(opts.name, inputs, input_list, input_pairs, input_pair_list,
-                   opts.type, action,
-                   ADLB_curr_priority, opts.target, opts.parallelism, &id);
-  TURBINE_CHECK(code, "could not process rule!");
+  adlb_code ac = ADLB_Put_rule(action, action_len, opts.target,
+        opts.answer, opts.type, ADLB_curr_priority, opts.parallelism,
+        opts.name, input_list, inputs, input_pair_list, input_pairs);
+  TCL_CONDITION(ac == ADLB_SUCCESS, "could not process rule!");
   return TCL_OK;
 }
 
@@ -1079,8 +1066,8 @@ Turbine_StrInt_Cmd(ClientData cdata, Tcl_Interp *interp,
 static int
 turbine_extract_ids(Tcl_Interp* interp, Tcl_Obj *const objv[],
             Tcl_Obj* list, int max,
-            turbine_datum_id* ids, int* id_count,
-            td_sub_pair* id_subs, int* id_sub_count)
+            adlb_datum_id* ids, int* id_count,
+            adlb_datum_id_sub* id_subs, int* id_sub_count)
 {
   Tcl_Obj** entry;
   int n;
@@ -1102,9 +1089,9 @@ turbine_extract_ids(Tcl_Interp* interp, Tcl_Obj *const objv[],
     }
     else
     {
-      td_sub_pair *pair = &id_subs[(*id_sub_count)++];
+      adlb_datum_id_sub *pair = &id_subs[(*id_sub_count)++];
 
-      pair->td = handle.id;
+      pair->id = handle.id;
       pair->subscript.length = handle.sub.val.length;
 
       // check if key memory was allocated and owned by us
@@ -1115,6 +1102,7 @@ turbine_extract_ids(Tcl_Interp* interp, Tcl_Obj *const objv[],
       else
       {
         // Don't own data, alloc and copy
+        // TODO: avoid malloc somehow?
         char *tmp_key = malloc(handle.sub.val.length);
         TCL_MALLOC_CHECK(tmp_key);
         memcpy(tmp_key, handle.sub.val.key, handle.sub.val.length);
