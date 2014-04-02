@@ -183,6 +183,10 @@ static void
 set_namespace_constants(Tcl_Interp* interp)
 {
   tcl_set_integer(interp, "::turbine::WORK", TURBINE_ADLB_WORK_TYPE_WORK);
+  // Map control to work for backwards compatibility with Tcl code
+  // that distinguishes between the two
+  tcl_set_integer(interp, "::turbine::CONTROL",
+        TURBINE_ADLB_WORK_TYPE_WORK);
 }
 
 static int

@@ -32,8 +32,7 @@ namespace eval turbine {
 
     # Export work types accessible
     variable WORK_TASK
-    variable CONTROL_TASK
-    namespace export WORK_TASK CONTROL_TASK
+    namespace export WORK_TASK
 
     # Mode is WORKER, or SERVER
     variable mode
