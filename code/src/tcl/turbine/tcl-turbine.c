@@ -63,6 +63,9 @@
 #include "src/tcl/r/tcl-r.h"
 
 #define TURBINE_ADLB_WORK_TYPE_WORK 0
+// Out-of-range work type to signal that it should be sent back to this
+// rank with type WORK
+#define TURBINE_ADLB_WORK_TYPE_LOCAL -1
 
 static int
 turbine_extract_ids(Tcl_Interp* interp, Tcl_Obj *const objv[],
@@ -187,6 +190,8 @@ set_namespace_constants(Tcl_Interp* interp)
   // that distinguishes between the two
   tcl_set_integer(interp, "::turbine::CONTROL",
         TURBINE_ADLB_WORK_TYPE_WORK);
+  tcl_set_integer(interp, "::turbine::LOCAL",
+        TURBINE_ADLB_WORK_TYPE_LOCAL);
 }
 
 static int
@@ -434,7 +439,16 @@ rule_opt_from_kv(Tcl_Interp* interp, Tcl_Obj *const objv[],
         int t;
         rc = Tcl_GetIntFromObj(interp, val, &t);
         TCL_CHECK_MSG(rc, "type argument must be integer");
-        opts->work_type = t;
+        if (t == TURBINE_ADLB_WORK_TYPE_LOCAL)
+        {
+          // Ensure sent back here
+          opts->work_type = TURBINE_ADLB_WORK_TYPE_WORK;
+          opts->target = adlb_comm_rank;
+        }
+        else
+        {
+          opts->work_type = t;
+        }
         return TCL_OK;
       }
       break;
