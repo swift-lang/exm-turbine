@@ -25,7 +25,7 @@ namespace import turbine::string_*
 set iterations 10
 
 turbine::defaults
-turbine::init $engines $servers
+turbine::init $servers
 turbine::enable_read_refcount
 
 global TYPE_A TYPE_B TYPENAME_A TYPENAME_B

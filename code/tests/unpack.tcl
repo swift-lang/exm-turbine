@@ -198,7 +198,7 @@ proc test_2D_ref { } {
 }
 
 turbine::defaults
-turbine::init $engines $servers
+turbine::init $servers
 turbine::start main
 turbine::finalize
 

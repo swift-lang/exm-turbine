@@ -78,7 +78,7 @@ proc echo { stack args } {
 }
 
 turbine::defaults
-turbine::init $engines $servers
+turbine::init $servers
 turbine::enable_read_refcount
 turbine::start main
 turbine::finalize
