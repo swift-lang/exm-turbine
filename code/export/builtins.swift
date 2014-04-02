@@ -98,9 +98,13 @@ type external void;
 @pure
 (int n) adlb_servers() "turbine" "0.0.2" "adlb_servers_future"
     [ "set <<n>> [ turbine::adlb_servers ]" ];
+
+/*
+ deprecated: engines no longer exist
+ */
 @pure
-(int n) turbine_engines() "turbine" "0.0.2" "turbine_engines_future"
-    [ "set <<n>> [ turbine::turbine_engines ]" ];
+(int n) turbine_engines() "turbine" "0.0.2" "zero"
+    [ "set <<n>> 0" ];
 @pure
 (int n) turbine_workers() "turbine" "0.0.2" "turbine_workers_future"
     [ "set <<n>> [ turbine::turbine_workers ]" ];
