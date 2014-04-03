@@ -25,7 +25,7 @@
 (blob o)   blob_null() "turbine" "0.0.2" "blob_null"
  [ "set <<o>> [ turbine::blob_null ]" ];
 @pure
-(blob o)   blob_from_string(string s) "turbine" "0.0.2" "blob_from_stringr"
+(blob o)   blob_from_string(string s) "turbine" "0.0.2" "blob_from_string"
  [ "set <<o>> [ adlb::blob_from_string <<s>> ]" ];
 @pure
 (string o) string_from_blob(blob b) "turbine" "0.0.2" "string_from_blob"
