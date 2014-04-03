@@ -309,6 +309,12 @@ Turbine_Rule_Cmd(ClientData cdata, Tcl_Interp* interp,
         adlb_comm_rank, opts.work_type, ADLB_curr_priority, opts.parallelism,
         opts.name, input_list, inputs, input_pair_list, input_pairs);
   TCL_CONDITION(ac == ADLB_SUCCESS, "could not process rule!");
+  
+  // Free subscripts that were allocated
+  for (int i = 0; i < input_pairs; i++)
+  {
+    free((void*)input_pair_list[i].subscript.key);
+  }
   return TCL_OK;
 }
 
@@ -984,6 +990,8 @@ Turbine_StrInt_Cmd(ClientData cdata, Tcl_Interp *interp,
 
 /*
   Extract IDs and ID/Sub pairs
+
+  Ownership of subscript memory in id_subs is passed to caller.
  */
 static int
 turbine_extract_ids(Tcl_Interp* interp, Tcl_Obj *const objv[],
