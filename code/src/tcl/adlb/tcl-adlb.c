@@ -2865,14 +2865,16 @@ static Tcl_Obj *build_tcl_blob(void *data, int length, Tcl_Obj *handle)
   Tcl_Obj* list[blob_elems];
   list[0] = Tcl_NewPtr(data);
   list[1] = Tcl_NewIntObj(length);
+  if (list[0] == NULL || list[1] == NULL)
+    return NULL;
 
   if (handle != NULL)
   {
     Tcl_IncrRefCount(handle);
     list[2] = handle;
+    if (list[2] == NULL)
+      return NULL;
   }
-  if (list[0] == NULL || list[1] == NULL || list[2] == NULL)
-    return NULL;
   return Tcl_NewListObj(blob_elems, list);
 }
 
