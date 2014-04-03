@@ -2856,6 +2856,7 @@ ADLB_Retrieve_Blob_Impl(ClientData cdata, Tcl_Interp *interp,
   return TCL_OK;
 }
 
+// Return null on out of memory
 static Tcl_Obj *build_tcl_blob(void *data, int length, Tcl_Obj *handle)
 {
   // Pack and return the blob pointer, length, turbine ID as Tcl list
@@ -2864,11 +2865,14 @@ static Tcl_Obj *build_tcl_blob(void *data, int length, Tcl_Obj *handle)
   Tcl_Obj* list[blob_elems];
   list[0] = Tcl_NewPtr(data);
   list[1] = Tcl_NewIntObj(length);
+
   if (handle != NULL)
   {
     Tcl_IncrRefCount(handle);
     list[2] = handle;
   }
+  if (list[0] == NULL || list[1] == NULL || list[2] == NULL)
+    return NULL;
   return Tcl_NewListObj(blob_elems, list);
 }
 
@@ -3119,6 +3123,7 @@ ADLB_Blob_store_floats_Cmd(ClientData cdata, Tcl_Interp *interp,
   {
     double v;
     rc = Tcl_GetDoubleFromObj(interp, objs[i], &v);
+    TCL_CHECK(rc);
     memcpy(xfer+(size_t)i*sizeof(double), &v, sizeof(double));
   }
 
@@ -3158,8 +3163,10 @@ ADLB_Blob_store_ints_Cmd(ClientData cdata, Tcl_Interp *interp,
 
   for (int i = 0; i < length; i++)
   {
+    // TODO: should we use 64-bit ints?
     int v;
     rc = Tcl_GetIntFromObj(interp, objs[i], &v);
+    TCL_CHECK(rc);
     memcpy(xfer+(size_t)i*sizeof(int), &v, sizeof(int));
   }
 
@@ -3173,6 +3180,67 @@ ADLB_Blob_store_ints_Cmd(ClientData cdata, Tcl_Interp *interp,
         xfer, length*(int)sizeof(int), decr, ADLB_NO_RC);
   CHECK_ADLB_STORE(rc, id);
 
+  return TCL_OK;
+}
+
+static int
+ADLB_Blob_From_Int_List_Cmd(ClientData cdata, Tcl_Interp *interp,
+                           int objc, Tcl_Obj *const objv[])
+{
+  TCL_CONDITION(objc == 2, "Expected 1 arg");
+  int rc;
+
+  int length;
+  Tcl_Obj** objs;
+  rc = Tcl_ListObjGetElements(interp, objv[1], &length, &objs);
+  TCL_CHECK_MSG(rc, "requires list!");
+  assert(length >= 0);
+
+  // TODO: should we use 64-bit ints?
+  size_t blob_size = length * sizeof(int);
+  int *blob = malloc(blob_size);
+  TCL_MALLOC_CHECK(blob);
+
+  for (int i = 0; i < length; i++)
+  {
+    rc = Tcl_GetIntFromObj(interp, objs[i], &blob[i]);
+    TCL_CHECK(rc);
+  }
+  
+  Tcl_Obj *result = build_tcl_blob(blob, (int)blob_size, NULL);
+  TCL_MALLOC_CHECK(blob);
+
+  Tcl_SetObjResult(interp, result);
+  return TCL_OK;
+}
+
+static int
+ADLB_Blob_From_Float_List_Cmd(ClientData cdata, Tcl_Interp *interp,
+                           int objc, Tcl_Obj *const objv[])
+{
+  TCL_CONDITION(objc == 2, "Expected 1 arg");
+  int rc;
+
+  int length;
+  Tcl_Obj** objs;
+  rc = Tcl_ListObjGetElements(interp, objv[1], &length, &objs);
+  TCL_CHECK_MSG(rc, "requires list!");
+  assert(length >= 0);
+
+  size_t blob_size = length * sizeof(double);
+  double *blob = malloc(blob_size);
+  TCL_MALLOC_CHECK(blob);
+
+  for (int i = 0; i < length; i++)
+  {
+    rc = Tcl_GetDoubleFromObj(interp, objs[i], &blob[i]);
+    TCL_CHECK(rc);
+  }
+  
+  Tcl_Obj *result = build_tcl_blob(blob, (int)blob_size, NULL);
+  TCL_MALLOC_CHECK(blob);
+
+  Tcl_SetObjResult(interp, result);
   return TCL_OK;
 }
 
@@ -3201,7 +3269,6 @@ ADLB_Blob_From_String_Cmd(ClientData cdata, Tcl_Interp *interp,
   Tcl_Obj* result = Tcl_NewListObj(2, list);
 
   Tcl_SetObjResult(interp, result);
-  return TCL_OK;
   return TCL_OK;
 }
 
@@ -4956,6 +5023,8 @@ tcl_adlb_init(Tcl_Interp* interp)
   COMMAND("store_blob", ADLB_Store_Blob_Cmd);
   COMMAND("store_blob_floats", ADLB_Blob_store_floats_Cmd);
   COMMAND("store_blob_ints", ADLB_Blob_store_ints_Cmd);
+  COMMAND("blob_from_float_list", ADLB_Blob_From_Float_List_Cmd);
+  COMMAND("blob_from_int_list", ADLB_Blob_From_Int_List_Cmd);
   COMMAND("blob_from_string", ADLB_Blob_From_String_Cmd);
   COMMAND("blob_to_string", ADLB_Blob_To_String_Cmd);
   COMMAND("enable_read_refcount",  ADLB_Enable_Read_Refcount_Cmd);

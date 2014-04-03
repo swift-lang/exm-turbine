@@ -55,94 +55,51 @@ namespace eval turbine {
     store_string $result $s
   }
 
-  proc floats_from_blob { result input } {
-      rule $input "floats_from_blob_body $result $input" \
-          name "floats_from_blob-$result"
-  }
-  proc floats_from_blob_body { result input } {
-      log "floats_from_blob_body: result=<$result> input=<$input>"
-      set s      [ blobutils_sizeof_float ]
-      set L      [ adlb::retrieve_blob $input ]
-      set p      [ blobutils_cast_int_to_dbl_ptr [ lindex $L 0 ] ]
-      set length [ lindex $L 1 ]
+  proc floats_from_blob_impl { blob } {
+    set s       [ blobutils_sizeof_float ]
+    set p      [ blobutils_cast_int_to_dbl_ptr [ lindex $blob 0 ] ]
+    set length [ lindex $blob 1 ]
 
-      set n [ expr {$length / $s} ]
-      for { set i 0 } { $i < $n } { incr i } {
-          set d [ blobutils_get_float $p $i ]
-          literal t float $d
-          container_immediate_insert $result $i $t ref
-      }
-      refcount_incr $result w -1
-      adlb::blob_free $input
-      log "floats_from_blob_body: done"
+    set n [ expr {$length / $s} ]
+    set result [ list ]
+    for { set i 0 } { $i < $n } { incr i } {
+      lappend result [ blobutils_get_float $p $i ]
+    }
+    return $result
   }
 
-  # This is just in Fortran order for now
+  # This is just in Fortran order (column-major) for now
   # b: the blob
   # m: number of rows
   # n: number of columns
-  proc matrix_from_blob_fortran { result inputs } {
-      set b [ lindex $inputs 0 ]
-      set m [ lindex $inputs 1 ]
-      set n [ lindex $inputs 2 ]
-      rule [ list $b $m $n ] \
-          "matrix_from_blob_fortran_body $result $inputs" \
-          name "matrix_from_blob-$result"
-  }
-  proc matrix_from_blob_fortran_body { result b m n } {
-      log "matrix_from_blob_fortran_body: result=<$result> blob=<$b>"
-      # Retrieve inputs
-      set s       [ blobutils_sizeof_float ]
-      set L       [ retrieve_decr_blob $b ]
-      set p       [ blobutils_cast_int_to_dbl_ptr [ lindex $L 0 ] ]
-      set m_value [ retrieve_decr_integer $m ]
-      set n_value [ retrieve_decr_integer $n ]
-      set length  [ lindex $L 1 ]
+  proc matrix_from_blob_fortran_impl { L m n } {
+    set s       [ blobutils_sizeof_float ]
+    set p       [ blobutils_cast_int_to_dbl_ptr [ lindex $L 0 ] ]
+    set length  [ lindex $L 1 ]
+    
+    set result  [ dict create ]
 
-      # total = m x n
-      # i is row index:       0..m-1
-      # j is column index:    0..n-1
-      # k is index into blob: 0..total-1
-      # c[i] is row result[i]
-      set total [ expr {$length / $s} ]
-      if { $total != $m_value * $n_value } {
-          error "matrix_from_blob: blob size $total != $m_value x $n_value"
+    # total = m x n
+    # i is row index:       0..m-1
+    # j is column index:    0..n-1
+    # k is index into blob: 0..total-1
+    # c[i] is row result[i]
+    set total [ expr {$length / $s} ]
+    if { $total != $m * $n } {
+        error "matrix_from_blob: blob size $total != $m x $n"
+    }
+    for { set i 0 } { $i < $m } { incr i } {
+      set row [ dict create ]
+        
+      for { set j 0 } { $j < $n } { incr j } {
+        set k [ expr { $j * $m + $i} ]
+        dict append row $j [ blobutils_get_float $p $k ]
       }
-      for { set i 0 } { $i < $m_value } { incr i } {
-          set c($i) [ allocate_container integer ref ]
-          container_immediate_insert $result $i $c($i) ref
-      }
-      for { set k 0 } { $k < $total } { incr k } {
-          set d [ blobutils_get_float $p $k ]
-          literal t float $d
-          set i [ expr {$k % $m_value} ]
-          set j [ expr {$k / $m_value} ]
-          container_immediate_insert $c($i) $j $t ref
-      }
-      # Close rows
-      for { set i 0 } { $i < $m_value } { incr i } {
-          refcount_incr $c($i) w -1
-      }
-
-      # Close result
-      refcount_incr $result w -1
-      # Release cached blob
-      adlb::blob_free $b
-      log "matrix_from_blob_fortran_body: done"
+      dict append result $i $row
+    }
+    return $result
   }
-
-  # Container must be indexed from 0,N-1
-  proc blob_from_floats { result input } {
-    rule $input  "blob_from_floats_body $result $input" \
-        name "blob_from_floats-$result"
-  }
-
-  # This is called when every entry in container is set
-  proc blob_from_floats_body { result container } {
-    set kv_dict [ adlb::retrieve_decr $container 1 container ] 
-    adlb::store_blob_floats $result [ sorted_dict_values $kv_dict ]
-  }
-
+  
   proc sorted_dict_values { kv_dict } {
     set N [ dict size $kv_dict ]
     set A [ list ]
@@ -154,33 +111,11 @@ namespace eval turbine {
   }
 
   proc blob_from_floats_impl { kv_dict } {
-    set L [ sorted_dict_values $kv_dict ]
-    # TODO: convert list to blob
-    return $B
+    return [ adlb::blob_from_float_list [ sorted_dict_values $kv_dict ] ]
   }
 
-  # Container must be indexed from 0,N-1
-  proc blob_from_ints { result input } {
-    rule $input "blob_from_ints_body $input $result" \
-        name "blob_from_ints-$result"
-  }
-  proc blob_from_ints_body { container result } {
-
-      set N  [ adlb::container_size $container ]
-      c::log "blob_from_ints_body start"
-      complete_container $container \
-          "blob_from_ints_store $result $container $N"
-  }
-  # This is called when every entry in container is set
-  proc blob_from_ints_store { result container N } {
-    set A [ list ]
-    for { set i 0 } { $i < $N } { incr i } {
-      set td [ container_lookup $container $i ]
-      set v  [ retrieve_integer $td ]
-      lappend A $v
-    }
-    adlb::store_blob_ints $result $A
-    read_refcount_decr $container
+  proc blob_from_ints_impl { kv_dict } {
+    return [ adlb::blob_from_int_list [ sorted_dict_values $kv_dict ] ]
   }
 
   proc blob_zeroes_float { N } {
@@ -217,27 +152,9 @@ namespace eval turbine {
   }
 
   # Assumes A is closed
+  # Deprecated: number types now stored inline in container
   proc complete_container { A action } {
-      set n [ adlb::container_size $A ]
-      log "complete_container: <$A> size: $n"
-      complete_container_continue $A $action 0 $n
-  }
-  proc complete_container_continue { A action i n } {
-      log "complete_container_continue: <$A> $i/$n"
-      if { $i < $n } {
-          set x [ container_lookup $A $i ]
-          if { $x == 0 } {
-              error "complete_container: <$A>\[$i\]=<0>"
-          }
-          rule [ list $x ] \
-              "complete_container_continue_body $A {$action} $i $n" \
-              name "complete_container_continue-$A"
-      } else {
-          eval $action
-      }
-  }
-  proc complete_container_continue_body { A action i n } {
-      complete_container_continue $A $action [ incr i ] $n
+      eval $action
   }
 
   proc blob_debug_ints { ptr n } {
