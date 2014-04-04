@@ -103,7 +103,7 @@ type external void;
  deprecated: engines no longer exist
  */
 @pure
-(int n) turbine_engines() "turbine" "0.0.2" "zero"
+(int n) turbine_engines() "turbine" "0.0.2"
     [ "set <<n>> 0" ];
 @pure
 (int n) turbine_workers() "turbine" "0.0.2" "turbine_workers_future"
