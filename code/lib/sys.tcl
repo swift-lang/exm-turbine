@@ -315,10 +315,6 @@ namespace eval turbine {
 
         variable turbine_argv
 
-        if { [ adlb::rank ] != 0 } {
-            return
-        }
-
         set accepted [ list ]
         foreach td $args {
             lappend accepted [ retrieve_decr_string $td ]
