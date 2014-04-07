@@ -155,9 +155,9 @@ namespace eval turbine {
                               $write_refcount $permanent ]
     }
 
-    proc store_file_ref { id value } {
+    proc store_file_ref { id value {store_read_refs 1} {store_write_refs 0}} {
         log "store: <$id>=$value"
-        adlb::store $id file_ref $value
+        adlb::store $id file_ref $value $store_read_refs $store_write_refs
         c::cache_store $id file_ref $value
     }
 
