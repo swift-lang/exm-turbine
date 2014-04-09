@@ -21,7 +21,7 @@ namespace eval turbine {
 
     # Main worker loop
     proc worker { rules startup_cmd } {
-        
+
         eval $startup_cmd
         if { [ adlb::rank ] == 0 } {
             # First rank should start execution
@@ -39,7 +39,7 @@ namespace eval turbine {
               error "Invalid TURBINE_GEMTC_WORKER setting, must be int:\
                      ${gemtc_setting}"
             }
-            
+
             if { $gemtc_setting } {
              gemtc_worker
              return
@@ -48,9 +48,6 @@ namespace eval turbine {
 
         global WORK_TYPE
 
-        if { [ catch { c::worker_loop $WORK_TYPE(WORK) } e ] } {
-            global errorInfo
-            error "worker error: \n$errorInfo"
-        }
+        c::worker_loop $WORK_TYPE(WORK)
     }
 }
