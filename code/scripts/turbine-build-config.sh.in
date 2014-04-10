@@ -46,7 +46,7 @@ TURBINE_LIBS="-L${TURBINE_HOME}/lib \
 # Rpath including all ExM libraries and dependencies
 TURBINE_RPATH="-Wl,-rpath,${TURBINE_HOME}/lib \
                -Wl,-rpath,${ADLB_HOME}/lib \
-               -Wl,-rpath,${C_UTILS_HOME}"
+               -Wl,-rpath,${C_UTILS_HOME}/lib"
 
 if [ ! -z "$MPI_LIB_DIR" -a "$MPI_LIB_DIR" != 0 ]; then
   TURBINE_LIBS+=" -L$MPI_LIB_DIR"
