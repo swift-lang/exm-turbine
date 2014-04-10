@@ -134,9 +134,9 @@ namespace eval turbine {
     }
 
     proc assert_sufficient_procs { } {
-        if { [ adlb::size ] < 3 } {
+        if { [ adlb::size ] < 2 } {
             error "Too few Turbine processes specified by user:\
-                    [adlb::size], must be at least 3"
+                    [adlb::size], must be at least 2"
         }
     }
 
