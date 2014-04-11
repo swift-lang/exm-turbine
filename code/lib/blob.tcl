@@ -61,9 +61,9 @@ namespace eval turbine {
     set length [ lindex $blob 1 ]
 
     set n [ expr {$length / $s} ]
-    set result [ list ]
+    set result [ dict create ]
     for { set i 0 } { $i < $n } { incr i } {
-      lappend result [ blobutils_get_float $p $i ]
+      dict append result $i [ blobutils_get_float $p $i ]
     }
     return $result
   }
