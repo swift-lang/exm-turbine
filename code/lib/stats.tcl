@@ -224,7 +224,7 @@ namespace eval turbine {
       }
 
       if { $pop_std_out != 0 } {
-        if { $n == 0 } {
+        icf { $n == 0 } {
           error "calculating stddev of empty array <$container>"
         }
         store_float $pop_std_out [ expr {sqrt($M2_accum / $n)} ]
@@ -250,55 +250,39 @@ namespace eval turbine {
       set mean_accum 0.0
       set M2_accum 0.0
       set n_accum 0
-      set count [ adlb::enumerate $container count all 0 ]
+      set members [ adlb::enumerate $container members all 0 ]
 
-      set first_elem 1
-      set i 0
-      while { $i < $count } {
-        set last_chunk [ expr { $i + $CHUNK_SIZE >= $count } ]
 
-        if { $last_chunk } {
-          set this_chunk_size [ expr {$count - $i} ]
-          # TODO: change back for inline structs in array
-          set read_decr 0
+      foreach struct_td $members {
+        set struct [ retrieve_struct $struct_td ]
+        set n [ dict get $struct "n" ]
+        set mean [ dict get $struct "mean" ]
+        set M2 [ dict get $struct "M2" ]
+        if { $n_accum == 0 } {
+          # Initialize to first value
+          set n_accum $n
+          set mean_accum $mean
+          set M2_accum $M2
+          set first_elem 0
         } else {
-          set this_chunk_size $CHUNK_SIZE
-          set read_decr 0
+          # combine statistics
+          set mean2 $mean_accum
+          set n2 $n_accum
+          # n' := n1 + n2
+          set n_accum [ expr {$n_accum + $n} ]
+
+          # weighted mean
+          # mean' := (mean1 * n1 + mean2 * n2) / (n1 + n2)
+          set mean_accum [ expr ( $mean2 * $n2 + $mean * $n) / \
+                                            double( $n_accum ) ]
+
+          #  diff := mean2 - mean1
+          set diff [ expr {$mean - $mean2} ]
+
+          # M2' := M2_1 + M2_2 + diff^2 * ( n1*n2 / (n1 + n2))
+          set M2_accum [ expr $M2_accum + $M2 + \
+                        (($diff**2) * ($n2 * $n / double($n_accum))) ]
         }
-
-        set members [ adlb::enumerate $container members $this_chunk_size $i $read_decr ]
-        foreach struct_td $members {
-          set struct [ retrieve_struct $struct_td ]
-          set n [ dict get $struct "n" ]
-          set mean [ dict get $struct "mean" ]
-          set M2 [ dict get $struct "M2" ]
-          if { $first_elem } {
-            # Initialize to first value
-            set n_accum $n
-            set mean_accum $mean
-            set M2_accum $M2
-            set first_elem 0
-          } else {
-            # combine statistics
-            set mean2 $mean_accum
-            set n2 $n_accum
-            # n' := n1 + n2
-            set n_accum [ expr {$n_accum + $n} ]
-
-            # weighted mean
-            # mean' := (mean1 * n1 + mean2 * n2) / (n1 + n2)
-            set mean_accum [ expr ( $mean2 * $n2 + $mean * $n) / \
-                                              double( $n_accum ) ]
-
-            #  diff := mean2 - mean1
-            set diff [ expr {$mean - $mean2} ]
-
-            # M2' := M2_1 + M2_2 + diff^2 * ( n1*n2 / (n1 + n2))
-            set M2_accum [ expr $M2_accum + $M2 + \
-                          (($diff**2) * ($n2 * $n / double($n_accum))) ]
-          }
-        }
-        incr i [ llength $members ]
       }
 
       # TODO: change back for inline structs in array
