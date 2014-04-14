@@ -46,6 +46,10 @@ main()
   turbine_code rc =
       turbine_run(comm, "tests/strings.tcl", argc, argv, NULL);
   assert(rc == TURBINE_SUCCESS);
+  
+  // Rerun turbine
+  rc = turbine_run(comm, "tests/strings.tcl", argc, argv, NULL);
+  assert(rc == TURBINE_SUCCESS);
 
   MPI_Finalize();
   return 0;
