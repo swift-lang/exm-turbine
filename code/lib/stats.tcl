@@ -300,7 +300,7 @@ namespace eval turbine {
     
     # Produce final output
     rule $curr_structs [ list stat_combine_final \
-      [ lindex [ dict values $contents ] ] $n_out $mean_out $std_out ]
+      [ lindex $curr_structs ] $n_out $mean_out $std_out ]
 
   }
   
