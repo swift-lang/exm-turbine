@@ -258,7 +258,7 @@ namespace eval turbine {
     }
     
     # Set up a k-way reduction tree
-    set k 4
+    set k 16
 
     # Number of internal nodes in reduce tree
     set reduce_node_count 0
