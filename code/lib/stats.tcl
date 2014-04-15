@@ -224,7 +224,7 @@ namespace eval turbine {
       }
 
       if { $pop_std_out != 0 } {
-        icf { $n == 0 } {
+        if { $n == 0 } {
           error "calculating stddev of empty array <$container>"
         }
         store_float $pop_std_out [ expr {sqrt($M2_accum / $n)} ]
