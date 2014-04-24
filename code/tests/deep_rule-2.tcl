@@ -39,7 +39,10 @@ proc main {  } {
     turbine::store_string $echo_cmd "echo"
 
     # Run the command once all of the above is closed
-    turbine::deeprule [ list ${echo_cmd} ${u:arg} ${u:args} ${u:args2} ] [ list 0 0 1 1 ] [ list 0 0 0 1 ] "echo ${u:arg} ${u:args} ${echo_cmd} ${u:done} ${u:args2}" target -100 type ${::turbine::WORK}
+    turbine::deeprule [ list ${echo_cmd} ${u:arg} ${u:args} ${u:args2} ]\
+              [ list 0 0 1 1 ] [ list ref ref ref file_ref ] \
+              "echo ${u:arg} ${u:args} ${echo_cmd} ${u:done} ${u:args2}"\
+              target -100 type ${::turbine::WORK}
 
     
 

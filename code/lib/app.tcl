@@ -17,7 +17,7 @@
 namespace eval turbine {
   namespace export unpack_args exec_external
 
-  # Run external appplication
+  # Run external application
   # cmd: executable to run
   # kwopts: keyword options.  Valid are:
   #         stdout=file stderr=file
