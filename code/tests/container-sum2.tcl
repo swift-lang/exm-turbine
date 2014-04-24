@@ -49,7 +49,8 @@ proc rules { } {
     
     # wait until we assign 
     turbine::c::rule "" "turbine::container_immediate_insert $c \"1\" 4 integer"
-    turbine::c::rule [ list [ list $c 1 ] ] "insert_last $c \"3\" 3"
+    turbine::c::rule [ list [ adlb::subscript_container $c 1 ] ] \
+            "insert_last $c \"3\" 3"
 }
 
 turbine::init $env(TURBINE_ENGINES) $env(ADLB_SERVERS)

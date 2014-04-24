@@ -42,7 +42,7 @@ proc rules { } {
     turbine::allocate r1 ref
     turbine::c_f_lookup $A $i $r1 ref
     turbine::c_f_insert $A $i $t1 ref
-    turbine::cr_f_insert $r1 $j $t1 ref $A
+    turbine::cr_f_insert $r1 $j $t1 ref
 }
 
 turbine::defaults
