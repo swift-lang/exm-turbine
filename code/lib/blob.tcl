@@ -110,8 +110,36 @@ namespace eval turbine {
     return $A
   }
 
+  proc blob_from_floats { out in } {
+    set floats [ lindex $in 0 ]
+    set blob [ lindex $out 0 ]
+    rule $floats "blob_from_floats_body $blob $floats"
+  }
+
+  proc blob_from_floats_body { blob floats } {
+    set floats_val [ adlb::retrieve $floats container ]
+    set blob_val [ blob_from_floats_impl $floats_val ]
+   
+    store_blob $blob $blob_val
+    adlb::local_blob_free $blob_val
+  }
+
   proc blob_from_floats_impl { kv_dict } {
     return [ adlb::blob_from_float_list [ sorted_dict_values $kv_dict ] ]
+  }
+
+  proc blob_from_ints { out in } {
+    set ints [ lindex $in 0 ]
+    set blob [ lindex $out 0 ]
+    rule $ints "blob_from_ints_body $blob $ints"
+  }
+
+  proc blob_from_ints_body { blob ints } {
+    set ints_val [ adlb::retrieve $ints container ]
+    set blob_val [ blob_from_ints_impl $ints_val ]
+   
+    store_blob $blob $blob_val
+    adlb::local_blob_free $blob_val
   }
 
   proc blob_from_ints_impl { kv_dict } {
