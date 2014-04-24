@@ -3199,7 +3199,7 @@ ADLB_Blob_From_Int_List_Cmd(ClientData cdata, Tcl_Interp *interp,
   assert(length >= 0);
 
   // TODO: should we use 64-bit ints?
-  size_t blob_size = length * sizeof(int);
+  size_t blob_size = (size_t)length * sizeof(int);
   int *blob = malloc(blob_size);
   TCL_MALLOC_CHECK(blob);
 
@@ -3229,7 +3229,7 @@ ADLB_Blob_From_Float_List_Cmd(ClientData cdata, Tcl_Interp *interp,
   TCL_CHECK_MSG(rc, "requires list!");
   assert(length >= 0);
 
-  size_t blob_size = length * sizeof(double);
+  size_t blob_size = (size_t)length * sizeof(double);
   double *blob = malloc(blob_size);
   TCL_MALLOC_CHECK(blob);
 
@@ -3604,6 +3604,39 @@ ADLB_Lookup_Spin_Cmd(ClientData cdata, Tcl_Interp *interp,
                 int objc, Tcl_Obj *const objv[])
 {
     return ADLB_Lookup_Impl(interp, objc, objv, ADLB_SUB_CONTAINER, true);
+}
+
+/**
+  usage: adlb::subscribe <handle> <work type>
+  returns: 1 if subscribed, 0 if already exists
+ */
+static int
+ADLB_Subscribe_Cmd(ClientData cdata, Tcl_Interp *interp,
+                int objc, Tcl_Obj *const objv[])
+{
+  TCL_ARGS(3);
+  int rc;
+
+  tcl_adlb_handle handle;
+  rc = ADLB_PARSE_HANDLE(objv[1], &handle, true);
+  TCL_CHECK_MSG(rc, "Invalid handle %s", Tcl_GetString(objv[1]));
+
+  int work_type;
+  rc = Tcl_GetIntFromObj(interp, objv[2], &work_type);
+  TCL_CHECK_MSG(rc, "requires integer work type!");
+
+  int subscribed;
+  rc = ADLB_Subscribe(handle.id, handle.sub.val, work_type,
+                          &subscribed);
+
+  TCL_CONDITION(rc == ADLB_SUCCESS, "<%"PRId64">[%.*s] failed!",
+        handle.id, (int)handle.sub.val.length, (char*)handle.sub.val.key);
+  
+  rc = ADLB_PARSE_HANDLE_CLEANUP(&handle);
+  TCL_CHECK(rc);
+
+  Tcl_SetObjResult(interp, Tcl_NewIntObj(subscribed));
+  return TCL_OK;
 }
 
 /**
@@ -5041,6 +5074,7 @@ tcl_adlb_init(Tcl_Interp* interp)
   COMMAND("lookup",    ADLB_Lookup_Cmd);
   COMMAND("lookup_struct",    ADLB_Lookup_Struct_Cmd);
   COMMAND("lookup_spin", ADLB_Lookup_Spin_Cmd);
+  COMMAND("subscribe",  ADLB_Subscribe_Cmd);
   COMMAND("lock",      ADLB_Lock_Cmd);
   COMMAND("unlock",    ADLB_Unlock_Cmd);
   COMMAND("unique",    ADLB_Unique_Cmd);
