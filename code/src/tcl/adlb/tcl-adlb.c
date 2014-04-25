@@ -81,10 +81,10 @@ MPI_Comm adlb_comm;
 int adlb_comm_rank;
 
 /** Number of workers */
-static int workers;
+static int adlb_workers;
 
 /** Number of servers */
-static int servers;
+static int adlb_servers;
 
 static int am_server;
 
@@ -99,7 +99,7 @@ static int mpi_size = -1;
 static int mpi_rank = -1;
 
 /** Communicator for ADLB workers */
-static MPI_Comm worker_comm;
+static MPI_Comm adlb_worker_comm;
 
 /** If the controlling code passed us a communicator, it is here */
 long adlb_comm_ptr = 0;
@@ -356,9 +356,8 @@ ADLB_Init_Cmd(ClientData cdata, Tcl_Interp *interp,
     assert(false);
 
   MPI_Comm_size(adlb_comm, &mpi_size);
-  workers = mpi_size - servers;
   MPI_Comm_rank(adlb_comm, &mpi_rank);
-
+  int workers = mpi_size - servers;
   if (mpi_rank == 0)
   {
     if (workers <= 0)
@@ -371,17 +370,21 @@ ADLB_Init_Cmd(ClientData cdata, Tcl_Interp *interp,
   //           int *am_server, int *am_debug_server, MPI_Comm *app_comm)
 #ifdef USE_ADLB
   rc = ADLB_Init(servers, 0, 0, ntypes, type_vect,
-                   &am_server, &am_debug_server, &worker_comm);
+               &am_server, &am_debug_server, &adlb_worker_comm);
 #endif
 #ifdef USE_XLB
   rc = ADLB_Init(servers, ntypes, type_vect,
-                 &am_server, adlb_comm, &worker_comm);
+                 &am_server, adlb_comm, &adlb_worker_comm);
 #endif
   if (rc != ADLB_SUCCESS)
     return TCL_ERROR;
 
   if (! am_server)
-    MPI_Comm_rank(worker_comm, &adlb_comm_rank);
+    MPI_Comm_rank(adlb_worker_comm, &adlb_comm_rank);
+ 
+  // Set static variables
+  adlb_workers = workers;
+  adlb_servers = servers;
 
   set_namespace_constants(interp);
 
@@ -579,6 +582,20 @@ ADLB_Rank_Cmd(ClientData cdata, Tcl_Interp *interp,
 }
 
 /**
+   usage: no args, returns rank within workers
+*/
+static int
+ADLB_Worker_Rank_Cmd(ClientData cdata, Tcl_Interp *interp,
+              int objc, Tcl_Obj *const objv[])
+{
+  int worker_rank;
+  int rc = MPI_Comm_rank(adlb_worker_comm, &worker_rank);
+  TCL_CONDITION(rc == MPI_SUCCESS, "Error getting worker rank");
+  Tcl_SetObjResult(interp, Tcl_NewIntObj(worker_rank));
+  return TCL_OK;
+}
+
+/**
    usage: no args, returns true if a server, else false
 */
 static int
@@ -607,18 +624,18 @@ static int
 ADLB_Servers_Cmd(ClientData cdata, Tcl_Interp *interp,
                   int objc, Tcl_Obj *const objv[])
 {
-  Tcl_SetObjResult(interp, Tcl_NewIntObj(servers));
+  Tcl_SetObjResult(interp, Tcl_NewIntObj(adlb_servers));
   return TCL_OK;
 }
 
 /**
-   usage: no args, returns number of servers
+   usage: no args, returns number of workers
 */
 static int
 ADLB_Workers_Cmd(ClientData cdata, Tcl_Interp *interp,
                  int objc, Tcl_Obj *const objv[])
 {
-  Tcl_SetObjResult(interp, Tcl_NewIntObj(workers));
+  Tcl_SetObjResult(interp, Tcl_NewIntObj(adlb_workers));
   return TCL_OK;
 }
 
@@ -4461,7 +4478,9 @@ ADLB_Xpt_Unpack_Cmd(ClientData cdata, Tcl_Interp *interp,
 }
 
 /**
-  usage: adlb::xpt_reload <checkpoint file name>
+  usage: adlb::xpt_reload <checkpoint file name> <loader rank> <total loaders>
+  loader rank/total loads: total count of loaders, and this processes rank within
+          them, used to divide up work
   returns: statistics about reload.  Dict with "ranks" containing total
             number of ranks.  An entry is added for each rank that was
             reloaded (no entry present if not loaded by this process).
@@ -4473,12 +4492,25 @@ ADLB_Xpt_Reload_Cmd(ClientData cdata, Tcl_Interp *interp,
                    int objc, Tcl_Obj *const objv[])
 {
 #ifdef ENABLE_XPT
-  TCL_ARGS(2);
+  TCL_ARGS(4);
   const char *filename = Tcl_GetString(objv[1]);
+  int rc;
+  
+  int loader_rank;
+  int total_loaders;
+  rc = Tcl_GetIntFromObj(interp, objv[2], &loader_rank);
+  TCL_CHECK(rc);
+  TCL_CONDITION(loader_rank >= 0, "loader rank must be non-negative: %i",
+                loader_rank);
+  
+  rc = Tcl_GetIntFromObj(interp, objv[3], &total_loaders);
+  TCL_CHECK(rc);
+  TCL_CONDITION(total_loaders > 0, "Must be at least one loader: %i",
+                total_loaders);
 
   adlb_code ac;
   adlb_xpt_load_stats stats;
-  ac = ADLB_Xpt_reload(filename, &stats);
+  ac = ADLB_Xpt_reload(filename, &stats, loader_rank, total_loaders);
   TCL_CONDITION(ac == ADLB_SUCCESS, "Error reloading checkpoint from file %s",
                 filename);
 
@@ -5024,6 +5056,7 @@ tcl_adlb_init(Tcl_Interp* interp)
   COMMAND("declare_struct_type", ADLB_Declare_Struct_Type_Cmd);
   COMMAND("server",    ADLB_Server_Cmd);
   COMMAND("rank",      ADLB_Rank_Cmd);
+  COMMAND("worker_rank", ADLB_Worker_Rank_Cmd);
   COMMAND("amserver",  ADLB_AmServer_Cmd);
   COMMAND("size",      ADLB_Size_Cmd);
   COMMAND("servers",   ADLB_Servers_Cmd);
