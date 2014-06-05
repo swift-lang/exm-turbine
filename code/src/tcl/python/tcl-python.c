@@ -45,6 +45,7 @@
 static int
 handle_python_exception()
 {
+  printf("\n");
   printf("PYTHON EXCEPTION:\n");
   PyErr_Print();
   return TCL_ERROR;
@@ -125,6 +126,7 @@ Python_Eval_Cmd(ClientData cdata, Tcl_Interp *interp,
                 int objc, Tcl_Obj *const objv[])
 {
   TCL_ARGS(2);
+  // TODO: Throw TURBINE ERROR for cleaner handling (#601)
   tcl_condition_failed(interp, objv[0],
                        "Turbine not compiled with Python support");
   return TCL_ERROR;

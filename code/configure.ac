@@ -20,6 +20,8 @@ AC_INIT([Turbine], [turbine_version()], [wozniak@mcs.anl.gov])
 AC_CONFIG_SRCDIR([src/turbine/turbine.c])
 AC_CONFIG_HEADERS([config.h])
 
+m4_include([m4/ifblank.m4])
+
 TURBINE_VERSION=turbine_version()
 AC_MSG_RESULT([Turbine version: ${TURBINE_VERSION}])
 AC_SUBST(TURBINE_VERSION)
@@ -53,11 +55,27 @@ then
 fi
 AC_SUBST(USE_MAC)
 
+# Set shared object suffix (.so on Linux, .dylib on Mac)
+SO_SUFFIX=so
+if [[ $(uname) = "Darwin" ]]
+then
+   SO_SUFFIX=dylib
+fi
+AR_SUFFIX=a
+
 # Checks for programs
 AC_PROG_CC
 AC_PATH_PROG([SWIG],[swig],[0])
 [[ ${SWIG} == 0 ]] && AC_MSG_ERROR([Could not find SWIG!])
 # We trust the user's install and omit AC_PROG_INSTALL
+
+ENABLE_ZLIB=0
+m4_include([m4/ax_check_zlib.m4])
+AX_CHECK_ZLIB([ENABLE_ZLIB=1],
+   AC_MSG_ERROR([Could not find zlib: use --with-zlib or --disable-zlib.]))
+CFLAGS="${CFLAGS} -I${ZLIB_HOME}/include"
+AC_SUBST(ZLIB_HOME)
+AC_SUBST(ENABLE_ZLIB)
 
 # We prefer to use cp -u for installation
 AC_CACHE_CHECK([for cp that supports -u], [ac_cv_path_cp_u],
@@ -142,24 +160,23 @@ AC_ARG_WITH(c-utils,
 )
 AC_SUBST(USE_C_UTILS)
 
+USE_LIBCUTILS_A=""
+echo "CHECK ${USE_C_UTILS}/lib/libexmcutils.${AR_SUFFIX}"
+if [[ -f "${USE_C_UTILS}/lib/libexmcutils.${AR_SUFFIX}" ]]; then
+  USE_LIBCUTILS_A="${USE_C_UTILS}/lib/libexmcutils.${AR_SUFFIX}"
+fi
+AC_SUBST(USE_LIBCUTILS_A)
+
 # MPI defaults (may be overridden on special systems)
 USE_MACHINE=normal
 # The "launcher" is used by job submission systems to launch jobs
-# Usually a path to mpiexec, srun, or aprun
-# Full path to launcher (optional):
-USE_LAUNCHER=mpiexec
+# Usually a path to mpiexec- schedulers are handled by their scripts
+USE_LAUNCHER=0
 USE_MPI_DIR=0
 USE_MPI_INCLUDE=0
 USE_MPI_LIB_DIR=0
 USE_MPI_LIB_NAME=mpich
 ENABLE_CUSTOM_MPI=0
-
-# Set shared object suffix (.so on Linux, .dylib on Mac)
-SO_SUFFIX=so
-if [[ $(uname) = "Darwin" ]]
-then
-   SO_SUFFIX=dylib
-fi
 
 # Set MPI_DIR directly
 AC_ARG_WITH(mpi,
@@ -183,20 +200,6 @@ AC_ARG_ENABLE(custom-mpi,
     [
         ENABLE_CUSTOM_MPI=1
         USE_MACHINE=custom
-        USE_LAUNCHER=mpiexec
-    ],
-    [])
-
-# Special systems:
-# On the SiCortex, we use srun and libmpiP.a
-AC_ARG_ENABLE(sicortex,
-    AS_HELP_STRING([--enable-sicortex],
-                   [Required if running on SiCortex]),
-    [
-        USE_MACHINE=sicortex
-        USE_LAUNCHER=srun
-        USE_MPI_DIR=/usr
-        USE_MPI_LIB_NAME=scmpi
     ],
     [])
 
@@ -222,7 +225,7 @@ then
        USE_MPI_INCLUDE=${USE_MPI_DIR}/include
        USE_MPI_LIB_DIR=${USE_MPI_DIR}/lib
        AC_MSG_RESULT([Trying MPI directory: ${USE_MPI_DIR}])
-   elif (( ! ${ENABLE_CUSTOM} ))
+   elif (( ! ENABLE_CUSTOM_MPI ))
    then
        AC_MSG_ERROR([Turbine requires --with-mpi or
                                   --enable-custom-mpi or
@@ -230,12 +233,35 @@ then
    fi
 fi
 
-# Look for mpi.h at its APT location
-if [[ ! -f ${MPI_INCLUDE}/mpi.h ]]
+if [[ ${USE_LAUNCHER} == 0 ]]
 then
-    if [[ -f ${MPI_INCLUDE}/mpi/mpi.h ]]
+    # Try to set launcher based on MPI_DIR
+    if [[ -x ${USE_MPI_DIR}/bin/mpiexec ]]
     then
-        MPI_INCLUDE=${MPI_INCLUDE}/mpi
+        AC_MSG_RESULT([Found ${USE_MPI_DIR}/bin/mpiexec])
+        USE_LAUNCHER=${USE_MPI_DIR}/bin/mpiexec
+    fi
+fi
+
+if [[ ${USE_LAUNCHER} == 0 ]]
+then
+    # Try to set launcher based on PATH
+    program=$( which mpiexec )
+    if [[ ${?} != 0 ]]
+    then
+        AC_MSG_WARN([mpiexec not found: no default Turbine launcher])
+        USE_LAUNCHER=mpiexec-not-found
+    fi
+fi
+
+AC_MSG_RESULT([Using MPI launcher: ${USE_LAUNCHER}])
+
+# Look for mpi.h at its APT location
+if [[ ! -f ${USE_MPI_INCLUDE}/mpi.h ]]
+then
+    if [[ -f ${USE_MPI_INCLUDE}/mpi/mpi.h ]]
+    then
+        USE_MPI_INCLUDE=${USE_MPI_INCLUDE}/mpi
     fi
 fi
 
@@ -264,24 +290,80 @@ AC_ARG_WITH(mpi-lib-name,
     ],
     [])
 
+MPI_EXTRA_LIBS=
+AC_ARG_WITH(mpi-lib-extra,
+    AS_HELP_STRING([--with-mpi-lib-extra],
+                   [comma-separated list of names of any additional MPI
+                    libraries in MPI lib directory that must be linked
+                    against.  Mainly useful for static linking against
+                    uncommon MPI implementations or when not using
+                    mpicc.]),
+    [
+      # Switch to space separated
+      MPI_EXTRA_LIBS=$(echo "${withval}" | tr "," " ")
+    ],
+    [])
+
 # Now check MPI settings
 
 AC_CHECK_FILE(${USE_MPI_LIB_DIR},
-              [], [AC_MSG_ERROR(Could not find directory ${withval})])
+              [], [AC_MSG_ERROR(Could not find MPI library directory ${USE_MPI_LIB_DIR})])
 
 AC_CHECK_FILE(${USE_MPI_INCLUDE}/mpi.h,
               [],
-              [AC_MSG_ERROR([Could not find mpi.h in ${withval}])])
+              [AC_MSG_ERROR([Could not find mpi.h in ${USE_MPI_INCLUDE}])])
 
-MPI_LIB=${USE_MPI_LIB_DIR}/lib${USE_MPI_LIB_NAME}.${SO_SUFFIX}
-AC_CHECK_FILE(${MPI_LIB},
-              [], AC_MSG_ERROR([Could not find MPI shared library:
-                               ${MPI_LIB}.
-                               MPI may not be installed at this
-                               location or shared library may not
-                               have been built.]))
+MPI_LIB_SO=${USE_MPI_LIB_DIR}/lib${USE_MPI_LIB_NAME}.${SO_SUFFIX}
+MPI_LIB_A=${USE_MPI_LIB_DIR}/lib${USE_MPI_LIB_NAME}.${AR_SUFFIX}
+MPI_LIB_FOUND=0
+if [[ -f ${MPI_LIB_SO} ]]
+then
+  MPI_LIB_FOUND=1
+fi
 
-AC_MSG_RESULT([Using MPI launcher: ${USE_LAUNCHER}])
+USE_MPI_LIB_SPEC="-l${USE_MPI_LIB_NAME}"
+for extra_lib in ${MPI_EXTRA_LIBS}
+do
+  USE_MPI_LIB_SPEC+=" -l${extra_lib}"
+done
+
+USE_MPI_LIB_A=
+USE_MPI_LIB_EXTRA_A=
+if [[ -f ${MPI_LIB_A} ]]
+then
+  MPI_LIB_FOUND=1
+  USE_MPI_LIB_A=${MPI_LIB_A}
+
+  for extra_lib in ${MPI_EXTRA_LIBS}
+  do
+    extra_lib_a=${USE_MPI_LIB_DIR}/lib${extra_lib}.${AR_SUFFIX}
+    if [[ ! -f "${extra_lib_a}" ]]
+    then
+      AC_MSG_ERROR([Expected library ${extra_lib_a} to exist])
+    fi
+    USE_MPI_LIB_EXTRA_A+=" ${extra_lib_a}"
+  done
+
+  # Locate common extra dependencies
+  for extra_lib in opa mpl open-rte open-pal
+  do
+    extra_lib_a=${USE_MPI_LIB_DIR}/lib${extra_lib}.${AR_SUFFIX}
+    if [[ -f "${extra_lib_a}" ]]
+    then
+      USE_MPI_LIB_EXTRA_A+=" ${extra_lib_a}"
+      USE_MPI_LIB_SPEC+=" -l${extra_lib}"
+    fi
+  done
+fi
+
+if (( ! MPI_LIB_FOUND ))
+then
+  AC_MSG_ERROR([Could not find MPI library:
+                   ${MPI_LIB_SO} or ${MPI_LIB_A}.
+                   MPI may not be installed at this
+                   location or library may not
+                   have been built.])
+fi
 
 # Write out MPI settings
 AC_SUBST(USE_MACHINE)
@@ -289,6 +371,9 @@ AC_SUBST(USE_LAUNCHER)
 AC_SUBST(USE_MPI_INCLUDE)
 AC_SUBST(USE_MPI_LIB_DIR)
 AC_SUBST(USE_MPI_LIB_NAME)
+AC_SUBST(USE_MPI_LIB_SPEC)
+AC_SUBST(USE_MPI_LIB_A)
+AC_SUBST(USE_MPI_LIB_EXTRA_A)
 
 # Discover MPI implementation:
 # MPI_IMPL will be unknown, OpenMPI, or MPICH
@@ -316,7 +401,9 @@ AC_SUBST(MPI_IMPL)
 # See Turbine - Build for explanation
 ENABLE_MPE=0
 USE_MPE=0
-LIBMPE=libmpe.${SO_SUFFIX}
+USE_MPE_LIB_A=
+LIBMPE_SO=${USE_MPE}/lib/libmpe.${SO_SUFFIX}
+LIBMPE_A=${USE_MPE}/lib/libmpe.${AR_SUFFIX}
 AC_ARG_WITH(mpe,
      AS_HELP_STRING(
                     [--with-mpe],
@@ -325,12 +412,32 @@ AC_ARG_WITH(mpe,
 if [[ ${USE_MPE} != 0 ]]
 then
     AC_MSG_RESULT([Enabling MPE]);
-    AC_CHECK_FILE(${USE_MPE}/lib/${LIBMPE},,
-                  AC_MSG_ERROR([Could not find MPE!]))
+
+    LIBMPE_FOUND=0
+    if [[ -f ${LIBMPE_SO} ]]
+    then
+      LIBMPE_FOUND=1
+    fi
+
+    if [[ -f ${LIBMPE_A} ]]
+    then
+      LIBMPE_FOUND=1
+      USE_MPI_LIB_A=${LIBMPE_A}
+    fi
+
+    if (( ! LIBMPE_FOUND ))
+    then
+      AC_MSG_ERROR([Could not find MPE library:
+                       ${LIBMPE_SO} or ${LIBMPE_A}.
+                       MPE may not be installed at this
+                       location or library may not
+                       have been built.])
+    fi
     AC_DEFINE_UNQUOTED(ENABLE_MPE,ENABLE_MPE,[Enables MPE])
 fi
 AC_SUBST(USE_MPE)
 AC_SUBST(ENABLE_MPE)
+AC_SUBST(USE_MPE_LIB_A)
 
 ENABLE_XPT=yes
 AC_ARG_ENABLE(checkpoint,
@@ -386,6 +493,12 @@ AC_ARG_WITH(adlb,
     ]
 )
 AC_SUBST(USE_ADLB)
+
+USE_LIBADLB_A=""
+if [[ -f "${USE_ADLB}/lib/libadlb.${AR_SUFFIX}" ]]; then
+  USE_LIBADLB_A="${USE_ADLB}/lib/libadlb.${AR_SUFFIX}"
+fi
+AC_SUBST(USE_LIBADLB_A)
 
 # Python is optional
 HAVE_PYTHON=0
@@ -482,6 +595,28 @@ else
     echo "R disabled"
 fi
 
+HAVE_JULIA=0
+USE_JULIA=0
+AC_ARG_WITH(julia,
+   AS_HELP_STRING([--with-julia],
+                   [Use this julia source directory]),
+  [
+      HAVE_JULIA=1
+      USE_JULIA=${withval}
+      AC_CHECK_FILE(${USE_JULIA}/src/julia.h, [],
+                    [AC_MSG_ERROR([Could not find julia header!])])
+  ])
+AC_DEFINE_UNQUOTED(HAVE_JULIA,${HAVE_JULIA},[Enables Julia])
+AC_SUBST(HAVE_JULIA)
+AC_SUBST(USE_JULIA)
+
+if (( HAVE_JULIA ))
+then
+    echo "Julia enabled"
+else
+    echo "Julia disabled"
+fi
+
 # tclsh is used in the build process (cf. debug-auto.tcl)
 # Allow user to specify a native tclsh for use when cross-compiling
 # The user has not yet provided tclsh-local (default to USE_TCLSH):
@@ -500,6 +635,49 @@ AC_ARG_WITH(tclsh-local,
         AC_MSG_RESULT($(basename ${USE_TCLSH_LOCAL}))
     ],
     [])
+
+ENABLE_SHARED=1
+AC_ARG_ENABLE(shared,
+    AS_HELP_STRING([--enable-shared],
+                   [Builds shared libraries.
+                    Required to build dynamically loadable Tcl package.
+                    Default: enabled]),
+    [
+       if test "$enableval" = no ; then
+         ENABLE_SHARED=0
+       fi
+    ])
+AC_SUBST(ENABLE_SHARED)
+
+ENABLE_STATIC_PKG=1
+AC_ARG_ENABLE(static-pkg,
+    AS_HELP_STRING([--enable-static-pkg],
+       [Create statically linkable Turbine Tcl package with Tcl srouce.
+        Default: yes]),
+    [
+       if test "$enableval" = no ; then
+         ENABLE_STATIC_PKG=0
+       elif test "$enable_val" = yes ; then
+         ENABLE_STATIC_PKG=1
+       fi
+    ])
+AC_SUBST(ENABLE_STATIC_PKG)
+
+ENABLE_STATIC=1
+AC_ARG_ENABLE(static,
+    AS_HELP_STRING([--enable-static],
+             [Create static libraries.
+              Default: enabled]),
+  [
+       if test "$enableval" = no ; then
+         ENABLE_STATIC=0
+       fi
+    ])
+AC_SUBST(ENABLE_STATIC)
+
+# Need ar and ranlib to build static libraries
+AC_CHECK_PROG(AR, ar, ar, AC_MSG_ERROR(Cannot find ar))
+AC_PROG_RANLIB
 
 # In order from most to least preferred
 TCL_VERSION_PREFS="8.6 8.5"
@@ -552,10 +730,9 @@ AC_ARG_WITH(tcl-version,
 
 USE_TCL_LIB_DIR=0
 
-
 AC_ARG_WITH(tcl-lib-dir,
     AC_HELP_STRING([--with-tcl-lib-dir],
-                   [directory containing Tcl library]),
+                   [directory containing Tcl shared library]),
     [
         USE_TCL_LIB_DIR=${withval}
         AC_MSG_RESULT([using Tcl lib dir: ${USE_TCL_LIB_DIR}])
@@ -567,69 +744,125 @@ then
   TCL_VERSION_PREFS=${TCL_VERSION}
 fi
 
+# Can always use static Tcl library
+TCL_LIB_SUFFIX_PREFS="a"
+if [[ ${ENABLE_SHARED} != 0 ]]
+then
+  # Can use shared library in this case
+  TCL_LIB_SUFFIX_PREFS="${SO_SUFFIX} ${TCL_LIB_SUFFIX_PREFS}"
+fi
+
+
+# Locate one or both variant of libtcl
+USE_LIBTCL_A=
+USE_LIBTCL_SO=
 
 # Check in order from most to least preferred
 for TCLVER in ${TCL_VERSION_PREFS}
 do
-  
+
   if [[ ${USE_TCL_LIB_DIR} == 0 ]]
   then
     LIB_DIR_OPTS="${USE_TCL}/lib ${USE_TCL}/lib64"
+
+    # Debian distros may put in architecture-specific subdirectory
+    if which dpkg-architecture > /dev/null
+    then
+      DPKG_ARCH=$(dpkg-architecture -qDEB_HOST_MULTIARCH)
+      LIB_DIR_ARCH_OPTS=""
+      for opt in $LIB_DIR_OPTS
+      do
+        LIB_DIR_ARCH_OPTS+=" $opt/${DPKG_ARCH}"
+      done
+      LIB_DIR_OPTS="$LIB_DIR_OPTS $LIB_DIR_ARCH_OPTS"
+    fi
   else
     LIB_DIR_OPTS="${USE_TCL_LIB_DIR}"
   fi
-  
-  for LIB_DIR in ${LIB_DIR_OPTS}
+
+  for TCL_LIB_SUFFIX in ${TCL_LIB_SUFFIX_PREFS}
   do
-    LIBTCL=libtcl${TCLVER}.${SO_SUFFIX}
-    AC_MSG_CHECKING([for Tcl library at ${LIB_DIR}/${LIBTCL}])
-    if [[ -r ${LIB_DIR}/${LIBTCL} ]]
-    then
-      AC_MSG_RESULT([exists!])
-      TCL_VERSION=${TCLVER}
-      USE_TCL_LIB_DIR=${LIB_DIR}
-      break 2
-    else
-      AC_MSG_RESULT([no])
-    fi
+    for LIB_DIR in ${LIB_DIR_OPTS}
+    do
+      LIBTCL_PREFIX=libtcl${TCLVER}
+      LIBTCL=${LIBTCL_PREFIX}.${TCL_LIB_SUFFIX}
+      AC_MSG_CHECKING([for Tcl library at ${LIB_DIR}/${LIBTCL}])
+      if [[ -r ${LIB_DIR}/${LIBTCL} ]]
+      then
+        AC_MSG_RESULT([exists!])
+        TCL_VERSION=${TCLVER}
+        USE_TCL_LIB_DIR=${LIB_DIR}
+
+        # We found the library - work out which variants are present
+        MAYBE_LIBTCL_SO="${LIB_DIR}/${LIBTCL_PREFIX}.${SO_SUFFIX}"
+        MAYBE_LIBTCL_A="${LIB_DIR}/${LIBTCL_PREFIX}.${AR_SUFFIX}"
+        if [[ -r "${MAYBE_LIBTCL_SO}" ]]
+        then
+          USE_LIBTCL_SO="${MAYBE_LIBTCL_SO}"
+        fi
+        if [[ -r "${MAYBE_LIBTCL_A}" ]]
+        then
+          USE_LIBTCL_A="${MAYBE_LIBTCL_A}"
+        fi
+        break 3
+      else
+        AC_MSG_RESULT([no])
+      fi
+    done
   done
 done
 
-if [[ ! -r ${USE_TCL_LIB_DIR}/${LIBTCL} ]]
+if [[ -z "${USE_LIBTCL_A}" -a -z "${USE_LIBTCL_SO}" ]]
 then
     AC_MSG_ERROR([could not find libtcl!])
 fi
 
 echo "using Tcl version: ${TCL_VERSION}"
+echo "Tcl shared library: ${USE_LIBTCL_SO}"
+echo "Tcl static library: ${USE_LIBTCL_A}"
 AC_SUBST(TCL_VERSION)
-
 
 # Set USE_TCL_CFG_DIR: location of tclConfig.sh
 USE_TCL_CFG_DIR=0
-AC_MSG_CHECKING([for tclConfig.sh ])
+
+# This is a location used e.g. by the APT tcl8.6-dev package.
+# Put first to maximize chance of getting Tcl version correct
+TCL_CFG_DIR_ALTS="${USE_TCL_LIB_DIR}/tcl${TCL_VERSION}"
 # This location is for Tcl installation from source
-if [[ -r ${USE_TCL}/lib/tclConfig.sh ]]
-then
-    USE_TCL_CFG_DIR=${USE_TCL}/lib
-# This is a location used by the APT tcl8.5-dev package (1)
-elif [[ -r ${USE_TCL}/lib64/tclConfig.sh ]]
-then
-    USE_TCL_CFG_DIR=${USE_TCL}/lib64
-# This is a location used by the APT tcl8.5-dev package (2)
-elif [[ -r ${USE_TCL}/lib/tcl${TCL_VERSION}/tclConfig.sh ]]
-then
-    USE_TCL_CFG_DIR=${USE_TCL}/lib/tcl${TCL_VERSION}
-fi
+TCL_CFG_DIR_ALTS+=" ${USE_TCL_LIB_DIR}"
+
+for TCL_CFG_DIR_ALT in $TCL_CFG_DIR_ALTS
+do
+  AC_MSG_CHECKING([for tclConfig.sh at ${TCL_CFG_DIR_ALT}])
+  if [[ -r "$TCL_CFG_DIR_ALT/tclConfig.sh" ]]
+  then
+    USE_TCL_CFG_DIR="${TCL_CFG_DIR_ALT}"
+    AC_MSG_RESULT([found])
+    break
+  else
+    AC_MSG_RESULT([no])
+  fi
+done
+
 if [[ ${USE_TCL_CFG_DIR} == 0 ]]
 then
     AC_MSG_ERROR([Could not find tclConfig.sh!])
 fi
-AC_MSG_RESULT([ok])
 AC_MSG_RESULT([using tclConfig.sh in: ${USE_TCL_CFG_DIR}/])
+
+# Make copy of old version since it can be clobbered by tclConfig.sh
+TCL_OLD_VERSION="$TCL_VERSION"
+
+# Source tclConfig.sh to obtain Tcl settings
 source ${USE_TCL_CFG_DIR}/tclConfig.sh
 if [[ ${?} != 0 ]]
 then
     AC_MSG_ERROR([could not source: ${USR_TCL_CFG_DIR}/tclConfig.sh])
+fi
+if [[ "$TCL_VERSION" != "$TCL_OLD_VERSION" ]]
+then
+  AC_MSG_ERROR([${USE_TCL_CFG_DIR}/tclConfig.sh is not for appropriate \
+      Tcl version.  Expected ${TCL_OLD_VERSION} but got ${TCL_VERSION}])
 fi
 
 # TCL_VERSION needed by find-tcl.zsh
@@ -667,12 +900,82 @@ AC_ARG_WITH(tcl-include,
             ],
             [])
 
+AC_MSG_CHECKING([for Tcl system library directory with init.tcl])
+USE_TCL_SYSLIB_DIR=
+AC_ARG_WITH(tcl-syslib-dir,
+      AS_HELP_STRING(
+        [[--with-tcl-syslib-dir],
+         [tcl system library directory.  Must contain init.tcl in \
+          root or tcl${TCL_VERSION} subdirectory]]),
+        [USE_TCL_SYSLIB_DIR="${withval}"])
+
+mktemp_system()
+{
+    if [[ ${USE_MAC} == "no" ]]
+    then
+        mktemp
+    else
+        mktemp -t TURBINE
+    fi
+}
+
+if [[ -z "${USE_TCL_SYSLIB_DIR}" ]]
+then
+  # Put script in file as way to get tclsh to crash on invalid script
+  tmp_script=$(mktemp_system)
+
+  # Try to find out the library directory from tclsh
+  echo 'puts [[ file dir [ info library ] ]]' > ${tmp_script}
+  USE_TCL_SYSLIB_DIR=$( ${USE_TCLSH} $tmp_script )
+  TCLSH_EXIT=$?
+  rm $tmp_script
+  if [[ $? != 0 ]]; then
+    AC_MSG_ERROR([tcl-syslib-dir not provided and could not determine \
+                  system library location by invoking ${USE_TCLSH}])
+  fi
+fi
+
+if [[ ! -d "${USE_TCL_SYSLIB_DIR}" ]]
+then
+  AC_MSG_ERROR([Error finding tcl-syslib-dir: ${USE_TCL_SYSLIB_DIR} \
+               not a directory])
+fi
+
+INIT_TCL_FOUND=0
+# Try to locate init.tcl.  In some layouts it's in the root, in others
+# it's in the tcl${TCL_VERSION} subdirectory
+for syslib_dir in "${USE_TCL_SYSLIB_DIR}" \
+                  "${USE_TCL_SYSLIB_DIR}/tcl${TCL_VERSION}"
+do
+  MAYBE_INIT_TCL="${syslib_dir}/init.tcl"
+  if [[ -f ${MAYBE_INIT_TCL} ]]
+  then
+    INIT_TCL_FOUND=1
+    AC_MSG_RESULT([yes])
+    AC_MSG_RESULT([Found init.tcl: ${MAYBE_INIT_TCL}])
+  fi
+done
+
+if (( ! INIT_TCL_FOUND ))
+then
+  AC_MSG_ERROR([could not locate init.tcl under ${USER_TCL_SYSLIB_DIR}:\
+          appears not to be a legimitate Tcl system library directory])
+fi
+
+AC_MSG_RESULT([using Tcl system library directory: ${USE_TCL_SYSLIB_DIR}])
+
 AC_SUBST(USE_TCL)
 AC_SUBST(USE_TCL_LIB_DIR)
+AC_SUBST(USE_TCL_SYSLIB_DIR)
+AC_SUBST(USE_LIBTCL_A)
+AC_SUBST(USE_LIBTCL_SO)
 AC_SUBST(USE_TCLSH)
 AC_SUBST(USE_TCLSH_LOCAL)
 AC_SUBST(TCL_INCLUDE_SPEC)
 AC_SUBST(TCL_LIB_SPEC)
+# Tcl library dependencies for static build
+TCL_LIB_SPEC_EXTRA="${TCL_LIBS}"
+AC_SUBST(TCL_LIB_SPEC_EXTRA)
 
 DISABLE_LOG=0
 AC_ARG_ENABLE(log,
@@ -695,7 +998,6 @@ AC_ARG_ENABLE(fast,
     DISABLE_LOG=1
     CFLAGS="${CFLAGS} -O3 -DNDEBUG")
 AC_SUBST(ENABLE_FAST)
-AC_SUBST(CFLAGS)
 
 USE_XLC=0
 AC_ARG_ENABLE(xlc,
@@ -725,22 +1027,36 @@ AC_ARG_ENABLE(dev,
     ENABLE_DEV=1)
 AC_SUBST(ENABLE_DEV)
 
+AC_SUBST(CFLAGS)
+AC_SUBST(LDFLAGS)
+
 # We take system libraries out of arguments to the linker (#546)
-ldconfig -v 2>/dev/null | grep -vP '\t' | cut -d : -f 1 > system-libs.txt
+if [[ ${USE_MAC} == "no" ]]
+then
+    # This does not work on the Mac
+    ldconfig -v 2>/dev/null | grep -vP '\t' | cut -d : -f 1 > system-libs.txt
+else
+     touch system-libs.txt
+fi
 
 AC_CONFIG_FILES(
         src/turbine/turbine-version.h
         src/turbine/module.mk
         src/util/module.mk
+        src/util/debug-tokens.tcl
         src/tcl/module.mk
         src/tcl/adlb/module.mk
         src/tcl/blob/module.mk
         src/tcl/c-utils/module.mk
         src/tcl/mpe/module.mk
+        src/tcl/julia/module.mk
         src/tcl/python/module.mk
         src/tcl/r/module.mk
+        src/tcl/static-pkg/module.mk
         src/tcl/turbine/module.mk
+        src/executables/module.mk
         lib/module.mk
+        scripts/main-wrap/module.mk
         scripts/submit/module.mk
         scripts/submit/cobalt/module.mk
         scripts/submit/cray/module.mk
@@ -748,6 +1064,7 @@ AC_CONFIG_FILES(
         scripts/submit/pbs/module.mk
         scripts/submit/slurm/module.mk
         scripts/turbine-config.sh
+        scripts/turbine-build-config.sh
         tests/module.mk
         tests/runbin.zsh
 	Makefile

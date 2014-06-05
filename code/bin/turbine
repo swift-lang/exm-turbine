@@ -31,8 +31,10 @@ LINE_PREFIX=
 MACHINE_FILE=0
 REPORT_VERSION=0
 VERBOSE=0
+TURBINE_STATIC_EXEC=0
+EXEC_SCRIPT=0
 
-while getopts "f:hln:vV" OPTION
+while getopts "f:hln:vVxX" OPTION
 do
   case ${OPTION} in
     f)
@@ -52,6 +54,12 @@ do
       ;;
     V)
       VERBOSE=1
+      ;;
+    X)
+      TURBINE_STATIC_EXEC=1
+      ;;
+    x)
+      EXEC_SCRIPT=1
       ;;
     \?)
       # Bash already reported an error
@@ -130,6 +138,12 @@ if [[ ! -f ${PROGRAM} ]]
 then
   echo "turbine: program not found: ${PROGRAM}"
   exit 1
+fi
+
+if (( EXECUTABLE_PROGRAM ))
+then
+  # Don't use TCLSH
+  TCLSH=""
 fi
 
 if (( ${LINE_PREFIX_ENABLED} ))

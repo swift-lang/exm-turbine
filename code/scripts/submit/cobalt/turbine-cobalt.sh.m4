@@ -22,11 +22,16 @@ changecom(`dnl')#!/bin/bash
 # Define a convenience macro
 define(`getenv', `esyscmd(printf -- "$`$1' ")')
 
-COMMAND=getenv(COMMAND)
+# Get the time zone: for time stamps on log messages
+export TZ=getenv(TZ)
+
+COMMAND="getenv(COMMAND)"
 PPN=getenv(PPN)
 PROCS=getenv(PROCS)
 
 TURBINE_HOME=getenv(TURBINE_HOME)
+TURBINE_STATIC_EXEC=getenv(TURBINE_STATIC_EXEC)
+EXEC_SCRIPT=getenv(EXEC_SCRIPT)
 
 source ${TURBINE_HOME}/scripts/turbine-config.sh
 if [[ ${?} != 0 ]]
@@ -35,10 +40,20 @@ then
   exit 1
 fi
 
-LAUNCHER=getenv(TURBINE_LAUNCHER)
+MODE=getenv(MODE)
+LAUNCHER="getenv(TURBINE_LAUNCHER)"
+VALGRIND="getenv(VALGRIND)"
+
 export TURBINE_LOG=getenv(TURBINE_LOG)
+export ADLB_PRINT_TIME=getenv(ADLB_PRINT_TIME)
+
+if [[ ${MODE} == "cluster" ]]
+then
+      NODE_ARG="-f ${COBALT_NODEFILE}"
+fi
 
 echo "TURBINE SETTINGS"
+echo "JOB_ID:       ${COBALT_JOBID}"
 echo "DATE:         $(date)"
 echo "TURBINE_HOME: ${TURBINE_HOME}"
 echo "COMMAND:      ${COMMAND}"
@@ -46,8 +61,22 @@ echo "PROCS:        ${PROCS}"
 echo "PPN:          ${PPN}"
 echo "TCLLIBPATH:   ${TCLLIBPATH}"
 echo "LAUNCHER:     ${LAUNCHER}"
-
+[[ -n ${VALGRIND} ]] && \
+echo "VALGRIND:     ${VALGRIND}"
 echo
 
-${LAUNCHER} -l -n ${PROCS} -ppn ${PPN} ${TCLSH} ${COMMAND}
+# Unpack and export all user environment variables
+export getenv(ENV_LIST)
+
+# Run Turbine:
+${LAUNCHER} -l ${NODE_ARG} -n ${PROCS} -ppn ${PPN} \
+            ${VALGRIND} ${TCLSH} ${COMMAND}
+CODE=${?}
+
+echo
+echo "Turbine launcher done."
+echo "CODE: ${CODE}"
+echo "COMPLETE: $(date)"
+
 # Return exit code from launcher (mpiexec)
+exit ${CODE}

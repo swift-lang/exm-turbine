@@ -26,6 +26,8 @@
 
 #include <tcl.h>
 
+#include <mpi.h>
+
 // From c-utils
 #include <tools.h>
 
@@ -34,15 +36,17 @@
 // From turbine
 #include "src/turbine/turbine.h"
 
+/*
+  Run a Tcl script in a turbine instance
+  comm: communicator to use, MPI_COMM_NULL if there is no enclosing MPI
+        context, in which case we will initialize MPI
+ */
 turbine_code
 turbine_run(MPI_Comm comm, char* script_file,
             int argc, char** argv, char* output)
 {
-  // Create Tcl interpreter:
-  Tcl_Interp* interp = Tcl_CreateInterp();
-  Tcl_Init(interp);
   return turbine_run_interp(comm, script_file, argc, argv, output,
-                            interp);
+                            NULL);
 }
 
 turbine_code
@@ -50,13 +54,43 @@ turbine_run_interp(MPI_Comm comm, char* script_file,
                    int argc, char** argv, char* output,
                    Tcl_Interp* interp)
 {
-  // Store communicator pointer in Tcl variable for turbine::init
-  MPI_Comm* comm_ptr = &comm;
-  Tcl_Obj* TURBINE_ADLB_COMM =
-      Tcl_NewStringObj("TURBINE_ADLB_COMM", -1);
-  Tcl_Obj* adlb_comm_ptr = Tcl_NewLongObj((long) comm_ptr);
-  Tcl_ObjSetVar2(interp, TURBINE_ADLB_COMM, NULL, adlb_comm_ptr, 0);
+  // Read the user script
+  char* script = slurp(script_file);
+ 
+  if (script == NULL)
+  {
+    printf("turbine_run(): Could not load script: %s\n", script_file);
+    return TURBINE_ERROR_INVALID;
+  }
 
+  int rc =  turbine_run_string(comm, script, argc, argv, output, interp);
+  free(script);
+  return rc;
+}
+
+turbine_code turbine_run_string(MPI_Comm comm, const char* script,
+                                int argc, char** argv, char* output,
+                                Tcl_Interp* interp)
+{
+  bool created_interp = false;
+  if (interp == NULL)
+  {
+    // Create Tcl interpreter:
+    interp = Tcl_CreateInterp();
+    Tcl_Init(interp);
+    created_interp = true;
+  }
+  
+  if (comm != MPI_COMM_NULL)
+  {
+    // Store communicator pointer in Tcl variable for turbine::init
+    MPI_Comm* comm_ptr = &comm;
+    Tcl_Obj* TURBINE_ADLB_COMM =
+        Tcl_NewStringObj("TURBINE_ADLB_COMM", -1);
+    Tcl_Obj* adlb_comm_ptr = Tcl_NewLongObj((long) comm_ptr);
+    Tcl_ObjSetVar2(interp, TURBINE_ADLB_COMM, NULL, adlb_comm_ptr, 0);
+  }
+  
   // Render argc/argv for Tcl
   tcl_set_integer(interp, "argc", argc);
   Tcl_Obj* argv_obj     = Tcl_NewStringObj("argv", -1);
@@ -69,9 +103,6 @@ turbine_run_interp(MPI_Comm comm, char* script_file,
 
   if (output != NULL)
     tcl_set_wideint(interp, "turbine_run_output", (ptrdiff_t) output);
-
-  // Read the user script
-  char* script = slurp(script_file);
 
   // Run the user script
   int rc = Tcl_Eval(interp, script);
@@ -87,10 +118,12 @@ turbine_run_interp(MPI_Comm comm, char* script_file,
     printf("turbine_run(): Tcl error: %s\n", msg_string);
     return TURBINE_ERROR_UNKNOWN;
   }
-
-  // Clean up
-  Tcl_DeleteInterp(interp);
-  free(script);
+  
+  if (created_interp)
+  {
+    // Clean up
+    Tcl_DeleteInterp(interp);
+  }
 
   return TURBINE_SUCCESS;
 }

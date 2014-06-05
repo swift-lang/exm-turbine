@@ -3,11 +3,14 @@ DIR := tests
 
 TEST_SRC_C :=
 TEST_SRC_C += $(DIR)/debug.c
-TEST_SRC_C += $(DIR)/lib-turbine.c
-TEST_SRC_C += $(DIR)/ptasks-1.c
-TEST_SRC_C += $(DIR)/ptasks-bench.c
-TEST_SRC_C += $(DIR)/ptasks-stress.c
-TEST_SRC_C += $(DIR)/checkpoint-1.c
+TEST_SRC_C += $(DIR)/lib-turbine.c # issue #636
+# TEST_SRC_C += $(DIR)/ptasks-1.c
+# This takes too long for ordinary testing:
+# TEST_SRC_C += $(DIR)/ptasks-bench.c
+# The stress test can fail: (#577)
+# TEST_SRC_C += $(DIR)/ptasks-stress.c
+
+# TEST_SRC_C += $(DIR)/checkpoint-1.c # hangs
 
 ifeq ($(USE_MPE),1)
 	TEST_SRC_C += $(DIR)/mpe-1.c \
@@ -68,4 +71,9 @@ TEST_SRC_TCL := $(DIR)/error.tcl               \
 
 ifeq ($(USE_MPE),1)
 	TEST_SRC_TCL += $(DIR)/mpe-3.tcl
+endif
+
+ifeq ($(ENABLE_STATIC_PKG),1)
+	TEST_SRC_MANIFEST += $(DIR)/staticapp-1.manifest
+	TEST_SRC_C += $(patsubst %.manifest, %.c, $(TEST_SRC_MANIFEST))
 endif

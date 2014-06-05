@@ -44,26 +44,24 @@
 
 export TURBINE_HOME=$( cd $( dirname $0 )/../../.. ; /bin/pwd )
 
+source ${TURBINE_HOME}/scripts/turbine-config.sh
+
 source ${TURBINE_HOME}/scripts/submit/run-init.zsh
 
 # Log file for turbine-cobalt settings
-LOG_FILE=${TURBINE_OUTPUT}/turbine-cobalt.log
+LOG_FILE=${TURBINE_OUTPUT}/turbine.log
 # All output from job, including error stream
 OUTPUT_FILE=${TURBINE_OUTPUT}/output.txt
 
 print "SCRIPT:            ${SCRIPT}" >> ${LOG_FILE}
 SCRIPT_NAME=$( basename ${SCRIPT} )
-[[ -f ${SCRIPT} ]] || abort "script not found: ${SCRIPT}"
 cp ${SCRIPT} ${TURBINE_OUTPUT}
 
 JOB_ID_FILE=${TURBINE_OUTPUT}/jobid.txt
 
-source ${TURBINE_HOME}/scripts/turbine-config.sh
-
 # Turbine-specific environment (with defaults)
-TURBINE_ENGINES=${TURBINE_ENGINES:-1}
 ADLB_SERVERS=${ADLB_SERVERS:-1}
-TURBINE_WORKERS=$(( PROCS - TURBINE_ENGINES - ADLB_SERVERS ))
+TURBINE_WORKERS=$(( PROCS - ADLB_SERVERS ))
 ADLB_EXHAUST_TIME=${ADLB_EXHAUST_TIME:-0.1}
 ADLB_PRINT_TIME=${ADLB_PRINT_TIME:-0}
 TURBINE_LOG=${TURBINE_LOG:-1}
@@ -90,7 +88,6 @@ else
 fi
 
 env+=( TCLLIBPATH="${TCLLIBPATH}"
-       TURBINE_ENGINES=${TURBINE_ENGINES}
        TURBINE_WORKERS=${TURBINE_WORKERS}
        ADLB_SERVERS=${ADLB_SERVERS}
        ADLB_EXHAUST_TIME=${ADLB_EXHAUST_TIME}
@@ -115,32 +112,45 @@ NODES=$(( PROCS/PPN ))
 (( PROCS % PPN )) && (( NODES++ )) || true
 declare NODES
 
+if [[ ${CHANGE_DIRECTORY} == "" ]]
+then
+  WORK_DIRECTORY=${TURBINE_OUTPUT}
+else
+  WORK_DIRECTORY=${CHANGE_DIRECTORY}
+fi
+
+# Create the environment list in a format Cobalt can support
+ENV_LIST=${env}
+export ENV_LIST
+
 # Launch it
 if [[ ${MODE} == "cluster" ]]
 then
-  export COMMAND="${SCRIPT_NAME} ${ARGS}"
+  export COMMAND="${TURBINE_OUTPUT}/${SCRIPT_NAME} ${ARGS}"
   m4 ${TURBINE_HOME}/scripts/submit/cobalt/turbine-cobalt.sh.m4 > \
      ${TURBINE_OUTPUT}/turbine-cobalt.sh
   chmod u+x ${TURBINE_OUTPUT}/turbine-cobalt.sh
   qsub -n ${NODES}             \
        -t ${WALLTIME}          \
        -q ${QUEUE}             \
-       --cwd ${TURBINE_OUTPUT} \
-       --env "${ENV}"          \
+       --cwd ${WORK_DIRECTORY} \
        ${=MODE_ARG}            \
        -o ${TURBINE_OUTPUT}/output.txt \
        -e ${TURBINE_OUTPUT}/output.txt \
-       ${TURBINE_OUTPUT}/turbine-cobalt.sh | read JOB_ID
+       --jobname "Swift" \
+       ${TURBINE_OUTPUT}/turbine-cobalt.sh | \
+    read JOB_ID
 else
   qsub -n ${NODES}             \
        -t ${WALLTIME}          \
        -q ${QUEUE}             \
-       --cwd ${TURBINE_OUTPUT} \
+       --cwd ${WORK_DIRECTORY} \
        --env "${ENV}"          \
        ${=MODE_ARG}            \
        -o ${TURBINE_OUTPUT}/output.txt \
        -e ${TURBINE_OUTPUT}/output.txt \
-        ${TCLSH} ${SCRIPT_NAME} ${ARGS} | read JOB_ID
+        ${TCLSH} ${TURBINE_OUTPUT}/${SCRIPT_NAME} ${=ARGS} | \
+    read JOB_ID
 fi
 
 if [[ ${JOB_ID} == "" ]]
@@ -151,14 +161,14 @@ fi
 
 declare JOB_ID
 
-# Fill in log.txt
+# Fill in log
 {
   print "JOB:               ${JOB_ID}"
   print "COMMAND:           ${SCRIPT_NAME} ${ARGS}"
+  print "WORK_DIRECTORY:    ${WORK_DIRECTORY}"
   print "HOSTNAME:          $( hostname -d )"
   print "SUBMITTED:         $( date_nice )"
   print "PROCS:             ${PROCS}"
-  print "TURBINE_ENGINES:   ${TURBINE_ENGINES}"
   print "TURBINE_WORKERS:   ${TURBINE_WORKERS}"
   print "ADLB_SERVERS:      ${ADLB_SERVERS}"
   print "WALLTIME:          ${WALLTIME}"
@@ -181,13 +191,13 @@ print "TOTAL_TIME:        ${TOTAL_TIME}"  >> ${LOG_FILE}
 # Check for errors in output file
 [[ -f ${OUTPUT_FILE} ]] || abort "no output file!"
 
+# This does not work in MODE=cluster (Tukey)
 # Report non-zero job result codes
-grep "job result code:" ${OUTPUT_FILE} | grep -v "code: 0"
-if [[ $pipestatus[2] != 1 ]]
-then
-  print "JOB CRASHED" | tee -a ${LOG_FILE}
-  grep "job result code:" ${OUTPUT_FILE} >> ${LOG_FILE}
-  exit 1
-fi
+# if ! grep "code: 0" ${OUTPUT_FILE}
+# then
+#   print "JOB CRASHED" | tee -a ${LOG_FILE}
+#   grep "job result code:" ${OUTPUT_FILE} >> ${LOG_FILE}
+#   exit 1
+# fi
 
 exit 0

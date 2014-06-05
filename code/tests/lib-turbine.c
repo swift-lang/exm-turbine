@@ -27,6 +27,8 @@ main()
   int mpi_argc = 0;
   char** mpi_argv = NULL;
 
+  printf("HI\n");
+
   MPI_Init(&mpi_argc, &mpi_argv);
 
   // Create communicator for ADLB
@@ -41,9 +43,12 @@ main()
   argv[2] = "bye";
 
   // Run Turbine
-  turbine_code rc =
-      turbine_run(comm, "tests/strings.tcl", argc, argv, NULL);
-  assert(rc == TURBINE_SUCCESS);
+  for (int i = 0; i < 10; i++)
+  {
+    turbine_code rc =
+        turbine_run(comm, "tests/strings.tcl", argc, argv, NULL);
+    assert(rc == TURBINE_SUCCESS);
+  }
 
   MPI_Finalize();
   return 0;

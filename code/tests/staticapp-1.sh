@@ -1,4 +1,4 @@
-#!/bin/zsh
+#!/bin/bash
 # Copyright 2013 University of Chicago and Argonne National Laboratory
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -13,18 +13,22 @@
 # See the License for the specific language governing permissions and
 # limitations under the License
 
-# Turbine Output Search
-# COUNT most recent runs
+source tests/test-helpers.sh
 
-COUNT=$1
+THIS=$0
+BIN=${THIS%.sh}.x
+OUTPUT=${THIS%.sh}.out
+TESTS=$( dirname $0 )
+source ${TESTS}/setup.sh > ${OUTPUT} 2>&1
 
-checkvars COUNT
+set -x
+export TURBINE_USER_LIB=${THIS%.sh}/
 
-DIRS=$( lsd_leaf ~/turbine-output | tail -${COUNT} )
+${TESTS}/run-mpi.zsh ${BIN} >& ${OUTPUT}
+[[ ${?} == 0 ]] || test_result 1
 
-for D in ${DIRS}
-do
-  print $( < ${D}/jobid.txt ) ${D}
+for i in `seq 0 19`; do
+  grep -q "Hello world: $i" ${OUTPUT} || test_result 1
 done
 
-exit 1
+test_result 0

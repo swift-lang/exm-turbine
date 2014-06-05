@@ -37,6 +37,10 @@ static void task_error(Tcl_Interp* interp, int tcl_rc, char* command);
 #define service_log(format, args...) \
   log_printf("TURBINE_WORKER_SERVICE: " format, ## args)
 
+/*
+  Main worker loop
+  TODO: priority isn't inherited from parent tasks
+ */
 turbine_code
 turbine_worker_loop(Tcl_Interp* interp, void* buffer, size_t buffer_size,
                     int work_type)
@@ -72,13 +76,13 @@ turbine_worker_loop(Tcl_Interp* interp, void* buffer, size_t buffer_size,
                 code = ADLB_Iget(work_type, buffer, &work_len,
                                  &answer_rank, &type_recved);
             }
-
+    
             // Got work
             if ( code == ADLB_SUCCESS )
             {
                 assert(work_len <= buffer_size);
                 assert(type_recved == work_type);
-
+                
                 // Work unit is prepended with rule ID, followed by space.
                 char* rule_id_end = strchr(buffer, ' ');
                 assert(rule_id_end != NULL);

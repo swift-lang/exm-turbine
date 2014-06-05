@@ -17,7 +17,7 @@
 
 namespace eval turbine {
   namespace export unpack_args exec_external poll_mock async_exec_coasters
-  # Run external appplication
+  # Run external application
   # cmd: executable to run
   # kwopts: keyword options.  Valid are:
   #         stdout=file stderr=file
@@ -34,7 +34,9 @@ namespace eval turbine {
       set loop_obj [launch_coaster $cmd $stdin_src $stdout_dst $stderr_dst {*}$args]
     } else {
       set start [ clock milliseconds ]
-      exec $cmd {*}$args $stdin_src $stdout_dst $stderr_dst
+      if { [ catch { exec $cmd {*}$args $stdin_src $stdout_dst $stderr_dst } ] } {
+        turbine_error "external command failed: $cmd $args"
+      }
       set stop [ clock milliseconds ]
       set duration [ format "%0.3f" [ expr ($stop-$start)/1000.0 ] ]
       log "shell command duration: $duration"
@@ -84,6 +86,7 @@ namespace eval turbine {
   # STC generated TCL code -> async_exec_coasters -> launch_coaster
   proc async_exec_coasters {  cmd outfiles cmdargs kwopts {continuation {}} } {
     setup_redirects $kwopts stdin_src stdout_dst stderr_dst
+
     # Check to see if we were passed continuation
     set has_continuation [ expr [ string length $continuation ] > 0 ]
 
@@ -291,13 +294,13 @@ namespace eval turbine {
 
   # Unpack arguments from closed container of any nesting into flat list
   # Container must be deep closed (i.e. all contents closed)
-  proc unpack_args { container nest_level is_file } {
+  proc unpack_args { container nest_level base_type } {
     set res [ list ]
-    unpack_args_rec $container $nest_level $is_file res
+    unpack_args_rec $container $nest_level $base_type res
     return $res
   }
 
-  proc unpack_args_rec { container nest_level is_file res_var } {
+  proc unpack_args_rec { container nest_level base_type res_var } {
     upvar 1 $res_var res
 
     if { $nest_level == 0 } {
@@ -306,19 +309,19 @@ namespace eval turbine {
 
     if { $nest_level == 1 } {
       # 1d array
-      unpack_unnested_container $container $is_file res
+      unpack_unnested_container $container $base_type res
     } else {
       # Iterate in key order
       set contents [ adlb::enumerate $container dict all 0 ]
       set sorted_keys [ lsort -integer [ dict keys $contents ] ]
       foreach key $sorted_keys {
         set inner [ dict get $contents $key ]
-        unpack_args_rec $inner [ expr {$nest_level - 1} ] $is_file res
+        unpack_args_rec $inner [ expr {$nest_level - 1} ] $base_type res
       }
     }
   }
 
-  proc unpack_unnested_container { container is_file res_var } {
+  proc unpack_unnested_container { container base_type res_var } {
     upvar 1 $res_var res
 
     # Iterate in key order
@@ -326,10 +329,16 @@ namespace eval turbine {
     set sorted_keys [ lsort -integer [ dict keys $contents ] ]
     foreach key $sorted_keys {
       set member [ dict get $contents $key ]
-      if { $is_file } {
-        lappend res [ retrieve_string [ get_file_path $member ] ]
-      } else {
-        lappend res [ retrieve $member ]
+      switch $base_type {
+        file_ref {
+          lappend res [ retrieve_string [ get_file_path $member ] ]
+        }
+        ref {
+          lappend res [ retrieve $member ]
+        }
+        default {
+          lappend res $member
+        }
       }
     }
   }

@@ -20,13 +20,34 @@ namespace eval turbine {
     namespace import ::adlb::get
 
     # Main worker loop
-    proc worker { } {
+    proc worker { rules startup_cmd } {
+
+        eval $startup_cmd
+        if { [ adlb::rank ] == 0 } {
+            # First rank should start execution
+            eval $rules
+        }
+        
+        # Alternative GEMTC worker is enabled by environment variable
+        # TURBINE_GEMTC_WORKER=1, or another non-zero value
+        # An empty string is treated as false, other values are invalid
+        global env
+        if { [ info exists env(TURBINE_GEMTC_WORKER) ] &&
+             $env(TURBINE_GEMTC_WORKER) != "" } {
+            set gemtc_setting $env(TURBINE_GEMTC_WORKER)
+            if { ! [ string is integer -strict $gemtc_setting ] } {
+              error "Invalid TURBINE_GEMTC_WORKER setting, must be int:\
+                     ${gemtc_setting}"
+            }
+
+            if { $gemtc_setting } {
+             gemtc_worker
+             return
+            }
+        }
 
         global WORK_TYPE
 
-        if { [ catch { c::worker_loop $WORK_TYPE(WORK) } e ] } {
-            global errorInfo
-            error "worker error: \n$errorInfo"
-        }
+        c::worker_loop $WORK_TYPE(WORK)
     }
 }

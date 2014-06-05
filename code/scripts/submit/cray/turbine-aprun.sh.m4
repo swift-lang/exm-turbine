@@ -23,7 +23,7 @@ changecom(`dnl')#!/bin/bash -e
 # This simply does environment variable substition when m4 runs
 define(`getenv', `esyscmd(printf -- "$`$1'")')
 
-#PBS -N TURBINE
+#PBS -N Swift
 #PBS -q getenv(QUEUE)
 #PBS -l walltime=getenv(WALLTIME)
 #PBS -o getenv(OUTPUT_FILE)
@@ -31,7 +31,10 @@ define(`getenv', `esyscmd(printf -- "$`$1'")')
 ### Set the job size using appropriate directives for this system
 ifelse(getenv(BLUE_WATERS), `true',
 ### Blue Waters mode
+ifelse(getenv(BLUE_WATERS_FEATURE), `',
 #PBS -l nodes=getenv(NODES):ppn=getenv(PPN),
+#PBS -l nodes=getenv(NODES):ppn=getenv(PPN):getenv(BLUE_WATERS_FEATURE)
+),
 ### Default aprun mode
 #PBS -l mppwidth=getenv(PROCS)
 #PBS -l mppnppn=getenv(PPN))
@@ -47,7 +50,13 @@ ifelse(getenv(BLUE_WATERS), `true',
 
 VERBOSE=getenv(VERBOSE)
 (( VERBOSE )) && set -x
+
+# Set variables required for turbine-config.sh
 export TURBINE_HOME=getenv(TURBINE_HOME)
+TURBINE_STATIC_EXEC=getenv(TURBINE_STATIC_EXEC)
+EXEC_SCRIPT=getenv(EXEC_SCRIPT)
+
+# Setup configuration for turbine
 source ${TURBINE_HOME}/scripts/turbine-config.sh
 
 SCRIPT=getenv(SCRIPT)
@@ -55,7 +64,6 @@ ARGS="getenv(ARGS)"
 NODES=getenv(NODES)
 WALLTIME=getenv(WALLTIME)
 TURBINE_OUTPUT=getenv(TURBINE_OUTPUT)
-TCLSH=getenv(TCLSH)
 
 export TURBINE_USER_LIB=getenv(TURBINE_USER_LIB)
 export TURBINE_LOG=getenv(TURBINE_LOG)
@@ -64,14 +72,14 @@ export ADLB_DEBUG=getenv(ADLB_DEBUG)
 export PATH=getenv(PATH)
 
 # Set configuration of Turbine processes
-export TURBINE_ENGINES=getenv(TURBINE_ENGINES)
 export ADLB_SERVERS=getenv(ADLB_SERVERS)
 # Default to 1
-TURBINE_ENGINES=${TURBINE_ENGINES:-1}
 ADLB_SERVERS=${ADLB_SERVERS:-1}
+export TURBINE_GEMTC_WORKER=getenv(TURBINE_GEMTC_WORKER)
 
 export ADLB_DEBUG_RANKS=getenv(ADLB_DEBUG_RANKS)
 export ADLB_PRINT_TIME=getenv(ADLB_PRINT_TIME)
+export MPICH_RANK_REORDER_METHOD=getenv(MPICH_RANK_REORDER_METHOD)
 
 # Output header
 echo "Turbine: turbine-aprun.sh"
@@ -79,7 +87,7 @@ date "+%m/%d/%Y %I:%M%p"
 echo
 
 PROCS=getenv(`PROCS')
-TURBINE_WORKERS=$(( ${PROCS} - ${TURBINE_ENGINES} - ${ADLB_SERVERS} ))
+TURBINE_WORKERS=$(( ${PROCS} - ${ADLB_SERVERS} ))
 
 # Log the parameters
 echo "TURBINE_HOME: ${TURBINE_HOME}"
@@ -89,7 +97,6 @@ echo "NODES:        ${NODES}"
 echo "PPN:          ${PPN}"
 echo "WALLTIME:     ${WALLTIME}"
 echo
-echo "TURBINE_ENGINES: ${TURBINE_ENGINES}"
 echo "TURBINE_WORKERS: ${TURBINE_WORKERS}"
 echo "ADLB_SERVERS:    ${ADLB_SERVERS}"
 echo

@@ -31,7 +31,6 @@ set metadata [ list -name turbine -version $turbine_version ]
 # Must be kept in sync with list in lib/module.mk.in
 set items [ eval list -load $libtclturbine \
                 -source turbine.tcl    \
-                -source engine.tcl     \
                 -source worker.tcl     \
                 -source data.tcl       \
                 -source assert.tcl     \
@@ -52,6 +51,7 @@ set items [ eval list -load $libtclturbine \
                 -source blob.tcl       \
                 -source location.tcl   \
                 -source checkpoint.tcl \
+                -source gemtc_worker.tcl \
                 -source helpers.tcl ]
 
 puts [ eval ::pkg::create $metadata $items ]

@@ -46,7 +46,6 @@ LOG_FILE=${TURBINE_OUTPUT}/turbine-pbs.log
 
 print "SCRIPT:            ${SCRIPT}" >> ${LOG_FILE}
 SCRIPT_NAME=$( basename ${SCRIPT} )
-[[ -f ${SCRIPT} ]] || abort "script not found: ${SCRIPT}"
 cp ${SCRIPT} ${TURBINE_OUTPUT}
 export PROGRAM=${TURBINE_OUTPUT}/${SCRIPT_NAME}
 
@@ -54,9 +53,8 @@ JOB_ID_FILE=${TURBINE_OUTPUT}/jobid.txt
 
 # Turbine-specific environment (with defaults)
 export TURBINE_JOBNAME=${TURBINE_JOBNAME:-TURBINE}
-export TURBINE_ENGINES=${TURBINE_ENGINES:-1}
 export ADLB_SERVERS=${ADLB_SERVERS:-1}
-export TURBINE_WORKERS=$(( PROCS - TURBINE_ENGINES - ADLB_SERVERS ))
+export TURBINE_WORKERS=$(( PROCS - ADLB_SERVERS ))
 export ADLB_EXHAUST_TIME=${ADLB_EXHAUST_TIME:-1}
 export TURBINE_LOG=${TURBINE_LOG:-1}
 export TURBINE_DEBUG=${TURBINE_DEBUG:-1}
@@ -68,7 +66,7 @@ export N=${N:-0}
 # Evaluate any user turbine-pbs-run -e K=V settings here:
 for kv in ${env}
 do
-  eval ${kv}
+  eval export ${kv}
 done
 
 declare SCRIPT_NAME
@@ -103,7 +101,6 @@ declare JOB_ID
   print "HOSTNAME:          $( hostname -d )"
   print "SUBMITTED:         $( date_nice )"
   print "PROCS:             ${PROCS}"
-  print "TURBINE_ENGINES:   ${TURBINE_ENGINES}"
   print "TURBINE_WORKERS:   ${TURBINE_WORKERS}"
   print "ADLB_SERVERS:      ${ADLB_SERVERS}"
   print "WALLTIME:          ${WALLTIME}"

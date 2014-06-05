@@ -14,22 +14,43 @@
 # limitations under the License
 
 # Turbine Output Search
-# for JOBID
+# for JOB_ID in TURBINE_OUTPUT_ROOT
 
-JOBID=$1
+set -e
 
-DIRS=$( lsd_leaf ~/turbine-output )
+THIS=$( cd $( dirname $0 ) ; /bin/pwd )
+TURBINE_HOME=$( cd ${THIS}/../.. ; /bin/pwd )
+source ${TURBINE_HOME}/scripts/helpers.zsh
 
-for D in ${DIRS}
-do
-  if [[ -f ${D}/jobid.txt ]]
-  then
-    if [[ $( < ${D}/jobid.txt ) == ${JOBID} ]]
+usage()
+{
+  print "usage: turbine-output-search.zsh <JOB_ID>"
+}
+
+if [[ ${#} != 1 ]]
+then
+  usage
+  return 1
+fi
+
+JOB_ID=$1
+
+checkvar JOB_ID
+
+TURBINE_OUTPUT_ROOT=${TURBINE_OUTPUT_ROOT:-${HOME}/turbine-output}
+
+set -u
+
+find ${TURBINE_OUTPUT_ROOT} -name jobid.txt | \
+  while read ID_FILE
+  do
+    ID=$( < ${ID_FILE} )
+    if [[ ${JOB_ID} == ${ID}* ]]
     then
-      print ${D}
+      print TO=${ID_FILE:h}
       exit 0
     fi
-  fi
-done
+  done
 
+# We didn't find anything
 exit 1

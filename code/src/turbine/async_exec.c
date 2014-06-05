@@ -1,219 +1,280 @@
 /*
+ * Copyright 2014 University of Chicago and Argonne National Laboratory
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License
+ */
+
+/*
   Code sketch for generic async executor interface
 
   Created by Tim Armstrong, Nov 2013
+
+Architecture
+------------
+* Servers + regular workers + async work managers.
+* Each async work manager has multiple async tasks executing
+  simultaneously
+* We want to be able to execute arbitrary code before and after each
+  task on the worker node (to fetch data, store data, etc).
+  - When starting a task, the async work manager must execute
+    compiler-generated code.  This code is responsible for launching
+    the async task.  I.e. async worker gets task, async worker executes
+    task, hands control to task code, task code calls function to
+    launch async task, thereby returning control to async work manager
+    temporarily.
+  - Each async work task has two callbacks associated that are called
+    back in case of success/failure.
+
+
+Assumptions
+-----------
+* 1 ADLB worker per work-type, with N slots
+* Compiler generates code with 1 work unit per task, plus optionally a
+  chain of callbacks that may also contain 1 work unit of that type each
+* Add ability to request multiple tasks
+
+
+Implications of Assumptions
+---------------------------
+* 1 ADLB Get per slot to fill
+* ADLB get only needs to get one work type
+* Can do blocking ADLB get if no work
+* Have to check slots after executing each task or callback:
+  async worker code doesn't know if task code added work.
+
  */
+
+#include "src/turbine/async_exec.h"
 
 #include <assert.h>
 
 #include <adlb.h>
+#include <table.h>
     
 
 // To be replaced with correct check
 #define TMP_ADLB_CHECK(code) assert((code) == ADLB_SUCCESS)
 #define TMP_WARN(fmt, args...) fprintf(stderr, fmt "\n", ##args)
 
-// Function pointer types.  All are passed void state pointer for
-// any state needed
-typedef void (*exec_shutdown)(void *state);
+#define TMP_EXEC_CHECK(code) assert((code) == TURBINE_EXEC_SUCCESS)
+#define TMP_MALLOC_CHECK(p) assert(p != NULL)
 
-// Polling: periodically called on an executor with active tasks.
-//          updates ncompleted with number completed
-// TODO: more info about which completed
-typedef void (*exec_poll)(void *state, int *ncompleted);
+static bool executors_init = false;
+static struct table executors;
 
-// Executor notification model
-typedef enum
-{
-  EXEC_POLLING, /* We have to periodically poll for status */
-  EXEC_BG_THREAD, /* Executor has background thread */
-} async_exec_notif;
+static turbine_exec_code
+get_tasks(turbine_executor *executor, void *buffer, int buffer_size,
+          bool poll, int max_tasks);
 
-typedef struct {
-  const char *name;
-  int adlb_work_type; // Type to request from adlb
-  async_exec_notif notif; 
-  int total_slots; // Total slots supported
-  
-  void *state; // Internal state to pass to executor functions
+static turbine_exec_code
+check_tasks(turbine_executor *executor, bool poll);
 
-  /*
-    Function pointers for executors
-   */
-  exec_shutdown shutdown;
-  exec_poll poll; // Optional, for polling-based executors
-} executor_t;
+static void
+shutdown_executors(turbine_executor *executors, int nexecutors);
 
-
-static adlb_code try_get_work(executor_t *executors, int nexecutors,
-        void *buffer, int buffer_size, int *free_slots, int *busy_slots,
-        int *total_busy_slots);
-
-static void launch_task(executor_t *exec, const void *data, int length);
-static void shutdown_executors(executor_t *executors, int nexecutors);
-
-void init_coasters_executor(executor_t *exec /*TODO: coasters params */)
+void init_coasters_executor(turbine_executor *exec /*TODO: coasters params */)
 {
   exec->name = "Coasters";
   exec->adlb_work_type = 2;
-  // TODO: currently polling based, but acutally has bg thread
-  exec->notif = EXEC_POLLING;
-  exec->total_slots = 4;
+  // TODO: could make use of background thread
+  exec->notif_mode = EXEC_POLLING;
 
-  exec->state = NULL; // TODO: pointer to coasters client
+  exec->initialize = NULL; 
   exec->shutdown = NULL; // TODO: shutdown
   exec->poll = NULL;
+  exec->wait = NULL;
+  exec->slots = NULL;
+  
+  exec->context = NULL; // Any settings, etc 
+  exec->state = NULL; // TODO: pointer to coasters client
+}
+
+turbine_code
+turbine_add_async_exec(turbine_executor executor)
+{
+  // Initialize table on demand
+  if (!executors_init)
+  {
+    bool ok = table_init(&executors, 16);
+    assert(ok); // TODO
+    executors_init = true;
+  }
+
+  // TODO: ownership of pointers, etc
+  // TODO: validate executor
+  turbine_executor *exec_ptr = malloc(sizeof(executor));
+  TMP_MALLOC_CHECK(exec_ptr);
+  *exec_ptr = executor;
+
+  table_add(&executors, executor.name, exec_ptr);
+
+  return TURBINE_SUCCESS;
 }
 
 
-void async_worker_loop(executor_t *executors, int nexecutors,
-                      void *buffer, int buffer_size) {
-  // Check we were initialised properly
-  assert(executors != NULL);
-  assert(nexecutors > 0);
+turbine_code
+turbine_async_worker_loop(const char *exec_name, void *buffer, int buffer_size)
+{
+  turbine_exec_code ec;
 
-  // Track slots per executor and overall
-  int free_slots[nexecutors];
-  int busy_slots[nexecutors];
-  int total_busy_slots = 0;
-  int total_slots = 0; // Total across all executors
-  for (int i = 0; i < nexecutors; i++) {
-    free_slots[i] = executors[i].total_slots;
-    busy_slots[i] = 0;
-    total_slots += free_slots[i];
+  assert(exec_name != NULL);
+  assert(buffer != NULL);
+  assert(buffer_size > 0);
+  // TODO: check buffer large enough for work units
+
+  turbine_executor *executor;
+  if (!table_search(&executors, exec_name, (void**)&executor)) {
+    printf("Could not find executor: \"%s\"\n", exec_name);
+    return TURBINE_ERROR_INVALID;
   }
+  assert(executor != NULL);
 
-  // TODO: need to track callbacks for each slot?
+  assert(executor->initialize != NULL);
+  ec = executor->initialize(executor->context, &executor->state);
+  TMP_EXEC_CHECK(ec);
+  while (true)
+  {
+    turbine_exec_slot_state slots;
+    ec = executor->slots(executor->state, &slots);
+    TMP_EXEC_CHECK(ec);
 
-  adlb_code code;
-
-  while (true) {
-    if (total_busy_slots != total_slots)
+    if (slots.used < slots.total)
     {
-      code = try_get_work(executors, nexecutors, buffer, buffer_size,
-                   free_slots, busy_slots, &total_busy_slots);
-      if (code == ADLB_SHUTDOWN)
+      int max_tasks = slots.total - slots.used;
+
+      // Need to do non-blocking get if we're polling executor too
+      bool poll = (slots.used != 0);
+      
+      ec = get_tasks(executor, buffer, buffer_size, poll, max_tasks);
+      if (ec == TURBINE_EXEC_SHUTDOWN)
       {
-        if (total_busy_slots != 0)
-        {
-          TMP_WARN("Shutting down but %i slots still busy\n",
-                   total_busy_slots);
-        }
-        shutdown_executors(executors, nexecutors);
         break;
       }
+      TMP_EXEC_CHECK(ec);
     }
 
-    if (total_busy_slots > 0)
+    // Update count in case work added 
+    ec = executor->slots(executor->state, &slots);
+    TMP_EXEC_CHECK(ec);
+
+    if (slots.used > 0)
     {
-      // TODO: if total_busy_slots == total_slots, ideally want to
-      //       suspend this thread (e.g. block on condition variable)
-      //       until we have work.
-      for (int i = 0; i < nexecutors; i++)
-      {
-        executor_t *exec = &executors[i];
-        if (busy_slots[i] > 0)
-        {
-          // check for task completions
-          if (exec->notif == EXEC_POLLING)
-          {
-            int completions;
-            exec->poll(exec->state, &completions);
-            assert(completions >= 0);
-            assert(completions <= busy_slots[i]);
-            if (completions > 0)
-            {
-              busy_slots[i] -= completions;
-              free_slots[i] += completions;
-              total_busy_slots -= completions;
-              // TODO: run callbacks?
-            }
-          }
-          else
-          {
-            // TODO: check for state updates?
-          }
-
-        }
-        // TODO: for executors with background threads, should we have
-        //       them update data somewhere?
-      }
-
+      // Need to do non-blocking check if we want to request more work
+      bool poll = (slots.used < slots.total);
+      ec = check_tasks(executor, poll);
+      TMP_EXEC_CHECK(ec);
     }
   }
+
+  shutdown_executors(executor, 1);
+
+  return TURBINE_SUCCESS;
 }
 
-/** Try to get work for executors */
-static adlb_code try_get_work(executor_t *executors, int nexecutors,
-        void *buffer, int buffer_size, int *free_slots, int *busy_slots,
-        int *total_busy_slots)
+/*
+ * Get tasks from adlb and execute them.
+ * TODO: currently only executes one task, but could do multiple
+ */
+static turbine_exec_code
+get_tasks(turbine_executor *executor, void *buffer, int buffer_size,
+          bool poll, int max_tasks)
 {
-  adlb_code code;
+  adlb_code ac;
+
   int work_len, answer_rank, type_recved;
-  MPI_Comm task_comm;
-
-  if (*total_busy_slots == 0)
+  bool got_work;
+  if (poll)
   {
-    // Do blocking get if we're idle
-    //TODO: can only support single work type because of blocking ADLB_Get
-    int exec_num = 0;
-    code = ADLB_Get(executors[exec_num].adlb_work_type, buffer, &work_len,
-                    &answer_rank, &type_recved, &task_comm);
-    TMP_ADLB_CHECK(code);
+    ac = ADLB_Iget(executor->adlb_work_type, buffer, &work_len,
+                    &answer_rank, &type_recved);
+    TMP_ADLB_CHECK(ac);
 
-    if (code == ADLB_SHUTDOWN)
-    {
-      return ADLB_SHUTDOWN;
-    }
-    else
-    {
-      assert(code == ADLB_SUCCESS);
-      launch_task(&executors[exec_num], buffer, work_len);
-      free_slots[exec_num]--;
-      busy_slots[exec_num]++;
-      (*total_busy_slots)++;
-    }
+    got_work = (ac != ADLB_NOTHING);
   }
   else
   {
-    for (int i = 0; i < nexecutors; i++)
+    MPI_Comm tmp_comm;
+    ac = ADLB_Get(executor->adlb_work_type, buffer, &work_len,
+                    &answer_rank, &type_recved, &tmp_comm);
+    TMP_ADLB_CHECK(ac);
+    
+    if (ac == ADLB_SHUTDOWN)
     {
-      // Check if this executor needs work
-      if (free_slots[i] > 0)
-      { 
-        // TODO: non-polling IGet?
-        code = ADLB_Iget(executors[i].adlb_work_type, buffer, &work_len,
-                      &answer_rank, &type_recved);
-        TMP_ADLB_CHECK(code);
-        
-        if (code == ADLB_SUCCESS)
-        {
-          launch_task(&executors[i], buffer, work_len);
-          free_slots[i]--;
-          busy_slots[i]++;
-          (*total_busy_slots)++;
-        } 
-        else if (code == ADLB_SHUTDOWN)
-        {
-          return ADLB_SHUTDOWN;
-        }
-      }
+      return TURBINE_EXEC_SHUTDOWN;
+    }
+    got_work = true;
+  }
+  
+  if (got_work)
+  {
+    // TODO: tcl_eval task
+  }
+
+  return TURBINE_EXEC_SUCCESS;
+}
+
+static turbine_exec_code
+check_tasks(turbine_executor *executor, bool poll)
+{
+  turbine_exec_code ec;
+  int ncompleted;
+  turbine_completed_task *completed;
+  if (poll)
+  {
+    ec = executor->poll(executor->state, &completed, &ncompleted);
+    TMP_EXEC_CHECK(ec);
+  }
+  else
+  {
+    ec = executor->wait(executor->state, &completed, &ncompleted);
+    TMP_EXEC_CHECK(ec);
+  }
+
+  for (int i = 0; i < ncompleted; i++)
+  {
+    if (completed[i].success)
+    {
+      // TODO: eval success callback
+    }
+    else
+    {
+      // TODO: eval fail callback
     }
   }
-  return ADLB_SUCCESS;
+
+  // TODO: free completed
+  return TURBINE_EXEC_SUCCESS;
 }
 
-/** Launch a received task */
-static void launch_task(executor_t *exec, const void *data, int length)
-{
-  // TODO: eval the tcl code
-  // TODO: is it reasonable to assume that always consumes one executor slot?
-}
 
-static void shutdown_executors(executor_t *executors, int nexecutors)
+static void
+shutdown_executors(turbine_executor *executors, int nexecutors)
 {
   for (int i = 0; i < nexecutors; i++) {
-    executor_t *exec = &executors[i];
-    exec->shutdown(exec->state);
+    turbine_executor *exec = &executors[i];
+    turbine_exec_code ec = exec->shutdown(exec->state);
+    if (ec != TURBINE_EXEC_SUCCESS)
+    {
+      // TODO: warn about error 
+    }
   }
+}
+
+turbine_code
+turbine_async_exec_finalize(void)
+{
+  // TODO: free memory for executors
+
+  executors_init = false;
+  return TURBINE_SUCCESS;
 }
