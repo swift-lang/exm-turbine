@@ -19,18 +19,39 @@
 
 #include "src/turbine/turbine-defs.h"
 
+#include <tcl.h>
+
+/*
+  Callback info: Tcl code to eval.
+
+  Reference counts on objects will be incremented on task launch
+  and decremented once task finishes.
+ */
+typedef struct {
+  Tcl_Obj *code;
+} turbine_task_callback;
+
+/*
+  Metadata to maintain with task.
+ */
+typedef struct {
+  turbine_task_callback success;
+  turbine_task_callback failure;
+} turbine_task_callbacks;
+
 /*
   Represent state of a completed task
  */
 typedef struct {
   bool success;
-  // TODO: callbacks
+  turbine_task_callbacks callbacks;
 } turbine_completed_task;
 
 typedef enum {
   TURBINE_EXEC_SUCCESS,
   TURBINE_EXEC_ERROR,
   TURBINE_EXEC_SHUTDOWN,
+  TURBINE_EXEC_OOM,
   // TODO: more info - e.g. if bad arg, or invalid state
 } turbine_exec_code;
 
@@ -42,29 +63,52 @@ typedef struct {
   int total;
 } turbine_exec_slot_state;
 
-// Function pointer types.  All are passed void state pointer for
-// any state needed
+/*
+  Function pointer types.  All are passed void state pointer for
+  any state needed.  A context pointer allows context to be
+  passed in for initialization
+ */
 
-// Initialize: initialize executor before running tasks.
-///            Passed context pointer.
-//             Should initialize state pointer
+/*
+  Initialize: initialize executor before running tasks.
+               Passed context pointer.
+               Should initialize state pointer
+ */
 typedef turbine_exec_code (*turbine_exec_init)(const void *context,
                                                void **state);
 
-// Shutdown: shut down executor
+/*
+  Shutdown: shut down initialized executor
+ */
 typedef turbine_exec_code (*turbine_exec_shutdown)(void *state);
 
-// Waiting: called on an executor with active tasks.
-//          updates completed with completed task info
+/*
+  Free: free memory for shut down executor
+ */
+typedef turbine_exec_code (*turbine_exec_free)(const void *context);
+
+/* 
+  Waiting: called on an executor with active tasks.
+          updates completed with completed task info
+  state: executor state pointer
+  completed: output array allocated by caller
+  ncompleted: input/output, set to array size by caller,
+              set to actual number complted by callee
+ */
 typedef turbine_exec_code (*turbine_exec_wait)(void *state,
-          turbine_completed_task **completed, int *ncompleted);
+          turbine_completed_task *completed, int *ncompleted);
 
-// Polling: periodically called on an executor with active tasks.
-//          updates completed with completed task info
+/*
+  Polling: periodically called on an executor with active tasks.
+           updates completed with completed task info.
+           Arguments same as wait
+ */
 typedef turbine_exec_code (*turbine_exec_poll)(void *state,
-          turbine_completed_task **completed, int *ncompleted);
+          turbine_completed_task *completed, int *ncompleted);
 
-// Slots: return count of slots
+/*
+  Slots: fill in counts of slots
+ */
 typedef turbine_exec_code (*turbine_exec_slots)(void *state,
                                   turbine_exec_slot_state *slots);
 
@@ -88,18 +132,33 @@ typedef struct {
    */
   turbine_exec_init initialize;
   turbine_exec_shutdown shutdown;
+  turbine_exec_free free;
   turbine_exec_wait wait;
   turbine_exec_poll poll;
   turbine_exec_slots slots;
 } turbine_executor;
 
+
+turbine_code turbine_async_exec_initialize(void);
+
+turbine_code turbine_async_exec_finalize(void);
+
+/*
+  Register executor
+ */
 turbine_code
 turbine_add_async_exec(turbine_executor executor);
 
-turbine_code
-turbine_async_worker_loop(const char *exec_name, void *buffer, int buffer_size);
+/*
+  Lookup registered executor.
+  Returns executor, or NULL if not registered.
+  Pointer to executor remains valid until shut down
+ */
+const turbine_executor *
+turbine_get_async_exec(const char *name);
 
 turbine_code
-turbine_async_exec_finalize(void);
+turbine_async_worker_loop(Tcl_Interp *interp, const char *exec_name,
+                          void *buffer, size_t buffer_size);
 
 #endif //__ASYNC_EXEC_H

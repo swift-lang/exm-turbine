@@ -1,5 +1,4 @@
-#!/bin/bash
-# Copyright 2013 University of Chicago and Argonne National Laboratory
+# Copyright 2014 University of Chicago and Argonne National Laboratory
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -13,19 +12,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License
 
-source tests/test-helpers.sh
+package require turbine 0.4
 
-THIS=$0
-SCRIPT=${THIS%.sh}.tcl
-OUTPUT=${THIS%.sh}.out
-
-source $( dirname $0 )/setup.sh > ${OUTPUT} 2>&1
-
-set -x
-
-bin/turbine -l -n 4 ${SCRIPT} >> ${OUTPUT} 2>&1
-[[ ${?} == 0 ]] || test_result 1
-
-grep -q "WAITING WORK" ${OUTPUT} && test_result 1
-
-test_result 0
+# This file deliberately left empty

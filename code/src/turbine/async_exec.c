@@ -15,7 +15,7 @@
  */
 
 /*
-  Code sketch for generic async executor interface
+  Generic async executor interface
 
   Created by Tim Armstrong, Nov 2013
 
@@ -53,34 +53,39 @@ Implications of Assumptions
   async worker code doesn't know if task code added work.
 
  */
+#define _GNU_SOURCE // for asprintf()
+#include <stdio.h>
 
+#include "src/turbine/turbine-checks.h"
 #include "src/turbine/async_exec.h"
 
 #include <assert.h>
 
 #include <adlb.h>
 #include <table.h>
-    
 
-// To be replaced with correct check
-#define TMP_ADLB_CHECK(code) assert((code) == ADLB_SUCCESS)
-#define TMP_WARN(fmt, args...) fprintf(stderr, fmt "\n", ##args)
-
-#define TMP_EXEC_CHECK(code) assert((code) == TURBINE_EXEC_SUCCESS)
-#define TMP_MALLOC_CHECK(p) assert(p != NULL)
+#define COMPLETED_BUFFER_SIZE 16
 
 static bool executors_init = false;
 static struct table executors;
 
 static turbine_exec_code
-get_tasks(turbine_executor *executor, void *buffer, int buffer_size,
-          bool poll, int max_tasks);
+get_tasks(Tcl_Interp *interp, turbine_executor *executor,
+          void *buffer, size_t buffer_size, bool poll, int max_tasks);
 
 static turbine_exec_code
-check_tasks(turbine_executor *executor, bool poll);
+check_tasks(Tcl_Interp *interp, turbine_executor *executor, bool poll);
 
 static void
 shutdown_executors(turbine_executor *executors, int nexecutors);
+
+static void
+launch_error(Tcl_Interp* interp, turbine_executor *exec, int tcl_rc,
+             const char *command);
+
+static void
+callback_error(Tcl_Interp* interp, turbine_executor *exec, int tcl_rc,
+               Tcl_Obj *command);
 
 void init_coasters_executor(turbine_executor *exec /*TODO: coasters params */)
 {
@@ -100,20 +105,25 @@ void init_coasters_executor(turbine_executor *exec /*TODO: coasters params */)
 }
 
 turbine_code
+turbine_async_exec_initialize(void)
+{
+  turbine_condition(!executors_init, TURBINE_ERROR_INVALID,
+                    "Executors already init");
+  bool ok = table_init(&executors, 16);
+  turbine_condition(ok, TURBINE_ERROR_OOM, "Error initializing table");
+
+  executors_init = true;
+  return TURBINE_EXEC_SUCCESS;
+}
+
+turbine_code
 turbine_add_async_exec(turbine_executor executor)
 {
-  // Initialize table on demand
-  if (!executors_init)
-  {
-    bool ok = table_init(&executors, 16);
-    assert(ok); // TODO
-    executors_init = true;
-  }
-
+  assert(executors_init);
   // TODO: ownership of pointers, etc
   // TODO: validate executor
   turbine_executor *exec_ptr = malloc(sizeof(executor));
-  TMP_MALLOC_CHECK(exec_ptr);
+  TURBINE_MALLOC_CHECK(exec_ptr);
   *exec_ptr = executor;
 
   table_add(&executors, executor.name, exec_ptr);
@@ -121,9 +131,27 @@ turbine_add_async_exec(turbine_executor executor)
   return TURBINE_SUCCESS;
 }
 
+static turbine_executor *
+get_mutable_async_exec(const char *name)
+{
+  assert(executors_init);
+  turbine_executor *executor;
+  if (!table_search(&executors, name, (void**)&executor)) {
+    printf("Could not find executor: \"%s\"\n", name);
+    return NULL;
+  }
+  return executor;
+}
+
+const turbine_executor *
+turbine_get_async_exec(const char *name)
+{
+  return get_mutable_async_exec(name);
+}
 
 turbine_code
-turbine_async_worker_loop(const char *exec_name, void *buffer, int buffer_size)
+turbine_async_worker_loop(Tcl_Interp *interp, const char *exec_name,
+                          void *buffer, size_t buffer_size)
 {
   turbine_exec_code ec;
 
@@ -132,21 +160,21 @@ turbine_async_worker_loop(const char *exec_name, void *buffer, int buffer_size)
   assert(buffer_size > 0);
   // TODO: check buffer large enough for work units
 
-  turbine_executor *executor;
-  if (!table_search(&executors, exec_name, (void**)&executor)) {
-    printf("Could not find executor: \"%s\"\n", exec_name);
-    return TURBINE_ERROR_INVALID;
-  }
-  assert(executor != NULL);
+  turbine_executor *executor = get_mutable_async_exec(exec_name);
+  turbine_condition(executor != NULL, TURBINE_ERROR_INVALID,
+                    "Executor %s not registered", exec_name);
 
   assert(executor->initialize != NULL);
   ec = executor->initialize(executor->context, &executor->state);
-  TMP_EXEC_CHECK(ec);
+  EXEC_CHECK_MSG(ec, TURBINE_ERROR_EXTERNAL,
+               "error initializing executor %s", executor->name);
+
   while (true)
   {
     turbine_exec_slot_state slots;
     ec = executor->slots(executor->state, &slots);
-    TMP_EXEC_CHECK(ec);
+    EXEC_CHECK_MSG(ec, TURBINE_ERROR_EXTERNAL,
+               "error getting executor slot count %s", executor->name);
 
     if (slots.used < slots.total)
     {
@@ -155,24 +183,26 @@ turbine_async_worker_loop(const char *exec_name, void *buffer, int buffer_size)
       // Need to do non-blocking get if we're polling executor too
       bool poll = (slots.used != 0);
       
-      ec = get_tasks(executor, buffer, buffer_size, poll, max_tasks);
+      ec = get_tasks(interp, executor, buffer, buffer_size,
+                     poll, max_tasks);
       if (ec == TURBINE_EXEC_SHUTDOWN)
       {
         break;
       }
-      TMP_EXEC_CHECK(ec);
+      EXEC_CHECK_MSG(ec, TURBINE_ERROR_EXTERNAL,
+               "error getting tasks for executor %s", executor->name);
     }
-
     // Update count in case work added 
     ec = executor->slots(executor->state, &slots);
-    TMP_EXEC_CHECK(ec);
+    EXEC_CHECK_MSG(ec, TURBINE_ERROR_EXTERNAL,
+               "error getting executor slot count %s", executor->name);
 
     if (slots.used > 0)
     {
       // Need to do non-blocking check if we want to request more work
       bool poll = (slots.used < slots.total);
-      ec = check_tasks(executor, poll);
-      TMP_EXEC_CHECK(ec);
+      ec = check_tasks(interp, executor, poll);
+      EXEC_CHECK(ec);
     }
   }
 
@@ -186,10 +216,11 @@ turbine_async_worker_loop(const char *exec_name, void *buffer, int buffer_size)
  * TODO: currently only executes one task, but could do multiple
  */
 static turbine_exec_code
-get_tasks(turbine_executor *executor, void *buffer, int buffer_size,
-          bool poll, int max_tasks)
+get_tasks(Tcl_Interp *interp, turbine_executor *executor,
+          void *buffer, size_t buffer_size, bool poll, int max_tasks)
 {
   adlb_code ac;
+  int rc;
 
   int work_len, answer_rank, type_recved;
   bool got_work;
@@ -197,7 +228,8 @@ get_tasks(turbine_executor *executor, void *buffer, int buffer_size,
   {
     ac = ADLB_Iget(executor->adlb_work_type, buffer, &work_len,
                     &answer_rank, &type_recved);
-    TMP_ADLB_CHECK(ac);
+    EXEC_ADLB_CHECK_MSG(ac, TURBINE_EXEC_ERROR,
+                        "Error getting work from ADLB");
 
     got_work = (ac != ADLB_NOTHING);
   }
@@ -206,53 +238,114 @@ get_tasks(turbine_executor *executor, void *buffer, int buffer_size,
     MPI_Comm tmp_comm;
     ac = ADLB_Get(executor->adlb_work_type, buffer, &work_len,
                     &answer_rank, &type_recved, &tmp_comm);
-    TMP_ADLB_CHECK(ac);
-    
     if (ac == ADLB_SHUTDOWN)
     {
       return TURBINE_EXEC_SHUTDOWN;
     }
+    EXEC_ADLB_CHECK_MSG(ac, TURBINE_EXEC_ERROR,
+                        "Error getting work from ADLB");
+    
     got_work = true;
   }
   
   if (got_work)
   {
-    // TODO: tcl_eval task
+    int cmd_len = work_len - 1;
+    rc = Tcl_EvalEx(interp, buffer, cmd_len, 0);
+    if (rc != TCL_OK)
+    {
+      launch_error(interp, executor, rc, buffer);
+      return TURBINE_ERROR_EXTERNAL;
+    }
   }
 
   return TURBINE_EXEC_SUCCESS;
 }
 
+static void
+launch_error(Tcl_Interp* interp, turbine_executor *exec, int tcl_rc,
+             const char *command)
+{
+  if (tcl_rc != TCL_ERROR)
+  {
+    printf("WARNING: Unexpected return code when running task for "
+           "executor %s: %d", exec->name, tcl_rc);
+  }
+
+  // Pass error to calling script
+  char* msg;
+  int rc = asprintf(&msg, "Turbine %s worker task error in: %s",
+                           exec->name, command);
+  assert(rc != -1);
+  Tcl_AddErrorInfo(interp, msg);
+  free(msg);
+}
+
+static void
+callback_error(Tcl_Interp* interp, turbine_executor *exec, int tcl_rc,
+               Tcl_Obj *command)
+{
+  if (tcl_rc != TCL_ERROR)
+  {
+    printf("WARNING: Unexpected return code when running task for "
+           "executor %s: %d", exec->name, tcl_rc);
+  }
+
+  // Pass error to calling script
+  char* msg;
+  int rc = asprintf(&msg, "Turbine %s worker task error in callback: %s",
+                           exec->name, Tcl_GetString(command));
+  assert(rc != -1);
+  Tcl_AddErrorInfo(interp, msg);
+  free(msg);
+}
+
 static turbine_exec_code
-check_tasks(turbine_executor *executor, bool poll)
+check_tasks(Tcl_Interp *interp, turbine_executor *executor, bool poll)
 {
   turbine_exec_code ec;
-  int ncompleted;
-  turbine_completed_task *completed;
+  
+  turbine_completed_task completed[COMPLETED_BUFFER_SIZE];
+  int ncompleted = COMPLETED_BUFFER_SIZE; // Pass in size
   if (poll)
   {
-    ec = executor->poll(executor->state, &completed, &ncompleted);
-    TMP_EXEC_CHECK(ec);
+    ec = executor->poll(executor->state, completed, &ncompleted);
+    EXEC_CHECK(ec);
   }
   else
   {
-    ec = executor->wait(executor->state, &completed, &ncompleted);
-    TMP_EXEC_CHECK(ec);
+    ec = executor->wait(executor->state, completed, &ncompleted);
+    EXEC_CHECK(ec);
   }
 
   for (int i = 0; i < ncompleted; i++)
   {
-    if (completed[i].success)
+    Tcl_Obj *cb, *succ_cb, *fail_cb;
+    succ_cb = completed[i].callbacks.success.code;
+    fail_cb = completed[i].callbacks.failure.code;
+    cb = (completed[i].success) ? succ_cb : fail_cb;
+
+    if (cb != NULL)
     {
-      // TODO: eval success callback
+      int rc = Tcl_EvalObjEx(interp, cb, 0);
+      if (rc != TCL_OK)
+      {
+        callback_error(interp, executor, rc, cb);
+        return TURBINE_ERROR_EXTERNAL;
+      }
     }
-    else
+
+    if (succ_cb != NULL)
     {
-      // TODO: eval fail callback
+      Tcl_DecrRefCount(succ_cb);
+    }
+    
+    if (fail_cb != NULL)
+    {
+      Tcl_DecrRefCount(fail_cb);
     }
   }
 
-  // TODO: free completed
   return TURBINE_EXEC_SUCCESS;
 }
 
@@ -270,11 +363,25 @@ shutdown_executors(turbine_executor *executors, int nexecutors)
   }
 }
 
+static void exec_free_cb(const char *key, void *val)
+{
+  turbine_executor *exec_ptr = val;
+  if (exec_ptr->free != NULL)
+  {
+    exec_ptr->free(exec_ptr->context);
+  }
+  free(exec_ptr);
+}
+
 turbine_code
 turbine_async_exec_finalize(void)
 {
-  // TODO: free memory for executors
+  if (executors_init)
+  {
+    table_free_callback(&executors, false, exec_free_cb);
 
-  executors_init = false;
+    executors_init = false;
+  }
+
   return TURBINE_SUCCESS;
 }

@@ -89,7 +89,7 @@ echo
 # Print out header file
 for arrname in "${arrnames[@]}"
 do
-  echo "extern $modifiers char $arrname[];"
+  echo "extern $modifiers unsigned char $arrname[];"
   echo "extern $modifiers size_t ${arrname}_len;"
 done
 echo
@@ -97,7 +97,7 @@ echo
 # Arrays indexing above variables
 len_arr=${master_arr}_lens
 name_arr=${master_arr}_names
-echo "static const char *${master_arr}[${count}];"
+echo "static const unsigned char *${master_arr}[${count}];"
 echo "static size_t ${len_arr}[${count}];"
 echo "static const char *${name_arr}[${count}];"
 echo "static const size_t ${master_arr}_len = $count;"

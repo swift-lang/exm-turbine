@@ -16,16 +16,37 @@
 source tests/test-helpers.sh
 
 THIS=$0
-SCRIPT=${THIS%.sh}.tcl
+BIN=${THIS%.sh}.x
 OUTPUT=${THIS%.sh}.out
-
-source $( dirname $0 )/setup.sh > ${OUTPUT} 2>&1
+TESTS=$( dirname $0 )
+source ${TESTS}/setup.sh > ${OUTPUT} 2>&1
 
 set -x
+export TURBINE_USER_LIB=${THIS%.sh}/
 
-bin/turbine -l -n 4 ${SCRIPT} >> ${OUTPUT} 2>&1
+export MKSTATIC_TMPDIR=$(mktemp -d)
+
+echo "MKSTATIC_TMPDIR=${MKSTATIC_TMPDIR}"
+
+${TESTS}/run-mpi.zsh ${BIN} >& ${OUTPUT}
 [[ ${?} == 0 ]] || test_result 1
 
-grep -q "WAITING WORK" ${OUTPUT} && test_result 1
+for f in ${THIS%.sh}.data*
+do
+  dst="${MKSTATIC_TMPDIR}/$(basename $f)"
+  if [ ! -f "$dst" ]
+  then
+    echo "Expected data file to be extracted at $dst"
+    exit 1
+  fi
+
+  if ! diff -q $f $dst
+  then
+    echo "Data file $f and extracted $dst differ"
+    exit 1
+  fi  
+done
+
+rm -rf "${MKSTATIC_TMPDIR}"
 
 test_result 0
