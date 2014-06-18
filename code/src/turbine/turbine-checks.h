@@ -68,6 +68,12 @@
   turbine_exec_code __ec = (code); \
   if (__ec != TURBINE_EXEC_SUCCESS) return __ec; }
 
+#define EXEC_CONDITION(cond, err_code, fmt, args...) { \
+  if (!(cond)) { \
+      TURBINE_ERR_PRINTF("CHECK FAILED: %s:%i\n", __FILE__, __LINE__);   \
+      TURBINE_ERR_PRINTF(fmt "\n", ##args); \
+      return (err_code); }}
+
 #define TURBINE_EXEC_CHECK(ec, tc) { \
   if ((ec) != TURBINE_EXEC_SUCCESS) return (tc); }
 
