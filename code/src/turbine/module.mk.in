@@ -8,6 +8,6 @@ TURBINE_SRC += $(DIR)/worker.c
 TURBINE_SRC += $(DIR)/async_exec.c
 TURBINE_SRC += $(DIR)/executors/noop_executor.c
 
-ifeq ($(ENABLE_COASTERS),1)
+ifeq ($(HAVE_COASTERS),1)
   TURBINE_SRC += $(DIR)/executors/coasters_executor.c
 endif
