@@ -154,8 +154,8 @@ coaster_initialize(void *context, void **state)
   list2_b_init(&s->active_tasks);
   
   const char *serviceURL = "TODO";
-  s->client = coaster_client_start(serviceURL);
-  EXEC_CONDITION(s->client != NULL, TURBINE_EXEC_OTHER,
+  coaster_rc crc = coaster_client_start(serviceURL, &s->client);
+  EXEC_CONDITION(crc == COASTER_SUCCESS, TURBINE_EXEC_OTHER,
       "Could not start client for url %s", serviceURL);
 
   *state = s;
