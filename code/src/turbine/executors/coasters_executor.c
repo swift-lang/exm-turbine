@@ -50,6 +50,9 @@ typedef struct coasters_state {
   // Overall context
   coasters_context *context;
 
+  // Actual Coasters client
+  coasters_client *client;
+
   // Information about slots available
   turbine_exec_slot_state slots;
 
@@ -149,6 +152,11 @@ coasters_initialize(void *context, void **state)
   s->slots.total = cx->total_slots;
 
   list2_b_init(&s->active_tasks);
+  
+  const char *serviceURL = "TODO";
+  s->client = coasters_client_start(serviceURL);
+  EXEC_CONDITION(s->client != NULL, TURBINE_EXEC_OTHER,
+      "Could not start client for url %s", serviceURL);
 
   *state = s;
   return TURBINE_EXEC_SUCCESS;
@@ -159,6 +167,8 @@ coasters_shutdown(void *state)
 {
   coasters_state *s = state;
   // TODO: iterate over active tasks?
+  
+  coasters_client_stop(s->client);
 
   struct list2_b_item *node = s->active_tasks.head;
   while (node != NULL)
