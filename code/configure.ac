@@ -617,6 +617,28 @@ else
     echo "Julia disabled"
 fi
 
+HAVE_COASTERS=0
+USE_COASTERS=0
+AC_ARG_WITH(coasters,
+   AS_HELP_STRING([--with-coasters],
+                   [Use this coaster c client install directory]),
+  [
+      HAVE_COASTERS=1
+      USE_COASTERS=${withval}
+      AC_CHECK_FILE(${USE_COASTERS}/include/CoasterClient.h, [],
+                    [AC_MSG_ERROR([Could not find coasters C client header!])])
+  ])
+AC_DEFINE_UNQUOTED(HAVE_COASTERS,${HAVE_COASTERS},[Enables Coasters])
+AC_SUBST(HAVE_COASTERS)
+AC_SUBST(USE_COASTERS)
+
+if (( HAVE_COASTERS ))
+then
+    AC_MSG_RESULT([Coasters enabled])
+else
+    AC_MSG_RESULT([Coasters disabled])
+fi
+
 # tclsh is used in the build process (cf. debug-auto.tcl)
 # Allow user to specify a native tclsh for use when cross-compiling
 # The user has not yet provided tclsh-local (default to USE_TCLSH):
