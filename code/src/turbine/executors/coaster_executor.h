@@ -24,13 +24,13 @@
 #define COASTERS_EXECUTOR_NAME "COASTERS"
 
 turbine_code
-coasters_executor_register(int adlb_work_type);
+coaster_executor_register(int adlb_work_type);
 
 /*
   Execute a coasters task
  */
 turbine_code
-coasters_execute(Tcl_Interp *interp, const turbine_executor *exec,
+coaster_execute(Tcl_Interp *interp, const turbine_executor *exec,
                 const void *work, int length,
                 turbine_task_callbacks callbacks);
 
