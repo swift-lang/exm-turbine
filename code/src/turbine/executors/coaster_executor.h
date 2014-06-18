@@ -24,7 +24,7 @@
 #define COASTERS_EXECUTOR_NAME "COASTERS"
 
 turbine_code
-coaster_executor_register(int adlb_work_type);
+coaster_executor_register(int adlb_work_type, const char *serviceURL);
 
 /*
   Execute a coasters task

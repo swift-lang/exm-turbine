@@ -32,7 +32,8 @@
  */
 typedef struct {
   // TODO: actual config info
-  int total_slots; // TODO: hardcode slots for now
+  char *serviceURL;
+  int total_slots; // TODO: fixed slots count for now
 } coaster_context;
 
 /*
@@ -79,14 +80,15 @@ static turbine_exec_code
 coaster_slots(void *state, turbine_exec_slot_state *slots);
 
 static turbine_exec_code 
-coaster_init_context(coaster_context *context);
+coaster_init_context(coaster_context *context, const char *serviceURL);
 
 static turbine_exec_code
 check_completed(coaster_state *state, turbine_completed_task *completed,
                int *ncompleted, bool wait_for_completion);
 
 static turbine_exec_code 
-init_coaster_executor(turbine_executor *exec, int adlb_work_type)
+init_coaster_executor(turbine_executor *exec, int adlb_work_type,
+                      const char *serviceURL)
 {
   turbine_exec_code ec;
 
@@ -96,7 +98,7 @@ init_coaster_executor(turbine_executor *exec, int adlb_work_type)
 
   coaster_context *cx = malloc(sizeof(coaster_context));
   EXEC_MALLOC_CHECK(cx);
-  ec = coaster_init_context(cx);
+  ec = coaster_init_context(cx, serviceURL);
   EXEC_CHECK(ec);
   
   exec->context = cx;
@@ -115,19 +117,21 @@ init_coaster_executor(turbine_executor *exec, int adlb_work_type)
 }
 
 static turbine_exec_code 
-coaster_init_context(coaster_context *context)
+coaster_init_context(coaster_context *context, const char *serviceURL)
 {
   // TODO: load config, etc
   context->total_slots = 4;
+  context->serviceURL = strdup(serviceURL);
+  EXEC_MALLOC_CHECK(context->serviceURL);
   return TURBINE_EXEC_SUCCESS;
 }
 
 turbine_code
-coaster_executor_register(int adlb_work_type)
+coaster_executor_register(int adlb_work_type, const char *serviceURL)
 {
   turbine_exec_code ec;
   turbine_executor exec;
-  ec = init_coaster_executor(&exec, adlb_work_type);
+  ec = init_coaster_executor(&exec, adlb_work_type, serviceURL);
   TURBINE_EXEC_CHECK_MSG(ec, TURBINE_ERROR_EXTERNAL,
                "error initializing Coasters executor");
 
@@ -153,10 +157,9 @@ coaster_initialize(void *context, void **state)
 
   list2_b_init(&s->active_tasks);
   
-  const char *serviceURL = "TODO";
-  coaster_rc crc = coaster_client_start(serviceURL, &s->client);
+  coaster_rc crc = coaster_client_start(cx->serviceURL, &s->client);
   EXEC_CONDITION(crc == COASTER_SUCCESS, TURBINE_EXEC_OTHER,
-      "Could not start client for url %s", serviceURL);
+      "Could not start client for url %s", cx->serviceURL);
 
   *state = s;
   return TURBINE_EXEC_SUCCESS;
@@ -168,7 +171,9 @@ coaster_shutdown(void *state)
   coaster_state *s = state;
   // TODO: iterate over active tasks?
   
-  coaster_client_stop(s->client);
+  coaster_rc crc = coaster_client_stop(s->client);
+  EXEC_CONDITION(crc == COASTER_SUCCESS, TURBINE_EXEC_OTHER,
+      "Could not cleanly stop Coasters client");
 
   struct list2_b_item *node = s->active_tasks.head;
   while (node != NULL)
@@ -201,7 +206,8 @@ coaster_free(void *context)
 {
   assert(context != NULL);
   coaster_context *cx = context;
-  
+ 
+  free(cx->serviceURL);
   free(cx);
   
   // TODO: clean up other things?
