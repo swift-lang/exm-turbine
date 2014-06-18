@@ -23,8 +23,12 @@
 // Registered name for coasters executor
 #define COASTERS_EXECUTOR_NAME "COASTERS"
 
+/*
+  Register a coaster executor with basic configuration settings.
+ */
 turbine_code
-coaster_executor_register(int adlb_work_type, const char *serviceURL);
+coaster_executor_register(int adlb_work_type, const char *service_url,
+                          const char *settings_str);
 
 /*
   Execute a coasters task
