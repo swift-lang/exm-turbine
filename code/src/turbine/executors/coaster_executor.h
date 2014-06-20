@@ -20,6 +20,9 @@
 #include "src/turbine/async_exec.h"
 #include "src/turbine/turbine-defs.h"
 
+// Use C-based coasters API
+#include <coasters.h>
+
 // Registered name for coasters executor
 #define COASTERS_EXECUTOR_NAME "COASTERS"
 
@@ -31,11 +34,11 @@ coaster_executor_register(int adlb_work_type, const char *service_url,
                           const char *settings_str);
 
 /*
-  Execute a coasters task
+  Execute a coasters job.  The job should be constructed with functions
+  in the coasters C API.
  */
 turbine_code
 coaster_execute(Tcl_Interp *interp, const turbine_executor *exec,
-                const void *work, int length,
-                turbine_task_callbacks callbacks);
+                coaster_job *job, turbine_task_callbacks callbacks);
 
 #endif //__COASTERS_EXECUTOR_H

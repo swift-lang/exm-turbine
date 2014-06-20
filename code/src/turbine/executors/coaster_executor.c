@@ -23,8 +23,15 @@
 #include <assert.h>
 #include <unistd.h>
 
-#include <coasters.h>
 #include <list2_b.h>
+
+/* Check coaster_rc, if failed print message and return return code.
+   TODO: get error info message */
+#define COASTER_CHECK(crc, err_rc) {                                  \
+  coaster_rc __crc = (crc);                                           \
+  turbine_condition(__crc == COASTER_SUCCESS, (err_rc),               \
+        "Error in Coaster execution: %s (%s)", "...",                 \
+        coaster_rc_string(__crc)); }
 
 /*
   Coasters context info, e.g. configuration that remains constant
@@ -128,12 +135,11 @@ coaster_init_context(coaster_context *context, const char *service_url,
   EXEC_MALLOC_CHECK(context->service_url);
   
   coaster_rc crc = coaster_settings_create(&context->settings);
-  EXEC_CONDITION(crc == COASTER_SUCCESS, TURBINE_EXEC_OOM,
-                 "Error creating Coasters settings object");
+  COASTER_CHECK(crc, TURBINE_EXEC_OOM);
   
   crc = coaster_settings_parse(context->settings, settings_str);
-  EXEC_CONDITION(crc == COASTER_SUCCESS, TURBINE_EXEC_OOM,
-                 "Error parsing Coasters settings string");
+  COASTER_CHECK(crc, TURBINE_EXEC_OOM);
+
   return TURBINE_EXEC_SUCCESS;
 }
 
@@ -171,8 +177,7 @@ coaster_initialize(void *context, void **state)
   list2_b_init(&s->active_tasks);
   
   coaster_rc crc = coaster_client_start(cx->service_url, &s->client);
-  EXEC_CONDITION(crc == COASTER_SUCCESS, TURBINE_EXEC_OTHER,
-      "Could not start client for url %s", cx->service_url);
+  COASTER_CHECK(crc, TURBINE_EXEC_OTHER);
 
   *state = s;
   return TURBINE_EXEC_SUCCESS;
@@ -185,8 +190,7 @@ coaster_shutdown(void *state)
   // TODO: iterate over active tasks?
   
   coaster_rc crc = coaster_client_stop(s->client);
-  EXEC_CONDITION(crc == COASTER_SUCCESS, TURBINE_EXEC_OTHER,
-      "Could not cleanly stop Coasters client");
+  COASTER_CHECK(crc, TURBINE_EXEC_OTHER);
 
   struct list2_b_item *node = s->active_tasks.head;
   while (node != NULL)
@@ -230,11 +234,12 @@ coaster_free(void *context)
 
 turbine_code
 coaster_execute(Tcl_Interp *interp, const turbine_executor *exec,
-                 const void *work, int length,
-                 turbine_task_callbacks callbacks)
+                coaster_job *job, turbine_task_callbacks callbacks)
 {
+  coaster_rc crc;
+
   assert(exec != NULL);
-  // TODO: alternative task info args
+  assert(job != NULL);
   coaster_state *s = exec->state;
   turbine_condition(s != NULL, TURBINE_ERROR_INVALID,
         "Invalid state for coasters executor");
@@ -246,15 +251,16 @@ coaster_execute(Tcl_Interp *interp, const turbine_executor *exec,
   task_node = list2_b_item_alloc(sizeof(coaster_active_task));
   TURBINE_MALLOC_CHECK(task_node);
 
-  coaster_active_task *task = (coaster_active_task*)task_node->data;
+  crc = coaster_submit(s->client, job);
+  COASTER_CHECK(crc, TURBINE_ERROR_EXTERNAL);
 
-  task->job = NULL; // TODO
-
-  // TODO: pass to coasters executor
   DEBUG_TURBINE("COASTERS: Launched task: %.*s\n", length,
                 (const char*)work);
 
+  coaster_active_task *task = (coaster_active_task*)task_node->data;
+  task->job = job;
   task->callbacks = callbacks;
+
   if (callbacks.success.code != NULL)
   {
     Tcl_IncrRefCount(callbacks.success.code);
