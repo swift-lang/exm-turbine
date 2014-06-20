@@ -61,21 +61,25 @@ Implications of Assumptions
 #include "src/turbine/executors/exec_interface.h"
 
 #include <assert.h>
+#include <sched.h>
 
 #include <adlb.h>
 #include <table.h>
 
 #define COMPLETED_BUFFER_SIZE 16
 
+
 static bool executors_init = false;
 static struct table executors;
 
 static turbine_exec_code
 get_tasks(Tcl_Interp *interp, turbine_executor *executor,
-          void *buffer, size_t buffer_size, bool poll, int max_tasks);
+          void *buffer, size_t buffer_size, bool poll, int max_tasks,
+          bool *got_tasks);
 
 static turbine_exec_code
-check_tasks(Tcl_Interp *interp, turbine_executor *executor, bool poll);
+check_tasks(Tcl_Interp *interp, turbine_executor *executor, bool poll,
+            bool *task_completed);
 
 static void
 shutdown_executors(turbine_executor *executors, int nexecutors);
@@ -173,6 +177,7 @@ turbine_async_worker_loop(Tcl_Interp *interp, const char *exec_name,
   while (true)
   {
     turbine_exec_slot_state slots;
+    bool something_happened = false;
     ec = executor->slots(executor->state, &slots);
     TURBINE_EXEC_CHECK_MSG(ec, TURBINE_ERROR_EXTERNAL,
                "error getting executor slot count %s", executor->name);
@@ -185,7 +190,7 @@ turbine_async_worker_loop(Tcl_Interp *interp, const char *exec_name,
       bool poll = (slots.used != 0);
       
       ec = get_tasks(interp, executor, buffer, buffer_size,
-                     poll, max_tasks);
+                     poll, max_tasks, &something_happened);
       if (ec == TURBINE_EXEC_SHUTDOWN)
       {
         break;
@@ -202,8 +207,15 @@ turbine_async_worker_loop(Tcl_Interp *interp, const char *exec_name,
     {
       // Need to do non-blocking check if we want to request more work
       bool poll = (slots.used < slots.total);
-      ec = check_tasks(interp, executor, poll);
+      ec = check_tasks(interp, executor, poll, &something_happened);
       TURBINE_EXEC_CHECK(ec, TURBINE_ERROR_EXTERNAL);
+    }
+
+    if (!something_happened)
+    {
+      // yield to scheduler if nothing happened to allow background
+      // threads to run ASAPt 
+      sched_yield();
     }
   }
 
@@ -215,10 +227,12 @@ turbine_async_worker_loop(Tcl_Interp *interp, const char *exec_name,
 /*
  * Get tasks from adlb and execute them.
  * TODO: currently only executes one task, but could do multiple
+ * got_tasks: set to true if got at least one task, unmodified otherwise
  */
 static turbine_exec_code
 get_tasks(Tcl_Interp *interp, turbine_executor *executor,
-          void *buffer, size_t buffer_size, bool poll, int max_tasks)
+          void *buffer, size_t buffer_size, bool poll, int max_tasks,
+          bool *got_tasks)
 {
   adlb_code ac;
   int rc;
@@ -227,6 +241,7 @@ get_tasks(Tcl_Interp *interp, turbine_executor *executor,
   bool got_work;
   if (poll)
   {
+    // TODO: move to ADLB_Amget() once ready
     ac = ADLB_Iget(executor->adlb_work_type, buffer, &work_len,
                     &answer_rank, &type_recved);
     EXEC_ADLB_CHECK_MSG(ac, TURBINE_EXEC_OTHER,
@@ -301,8 +316,13 @@ callback_error(Tcl_Interp* interp, turbine_executor *exec, int tcl_rc,
   free(msg);
 }
 
+/*
+  task_completed: set to true if at least one task completed,
+                  unmodified otherwise
+ */
 static turbine_exec_code
-check_tasks(Tcl_Interp *interp, turbine_executor *executor, bool poll)
+check_tasks(Tcl_Interp *interp, turbine_executor *executor, bool poll,
+            bool *task_completed)
 {
   turbine_exec_code ec;
   
