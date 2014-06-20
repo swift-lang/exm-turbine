@@ -23,7 +23,7 @@
 #include <assert.h>
 #include <unistd.h>
 
-#include <list2_b.h>
+#include <table.h>
 
 /* Check coaster_rc, if failed print message and return return code.
    TODO: get error info message */
@@ -64,15 +64,18 @@ typedef struct coaster_state {
   // Information about slots available
   turbine_exec_slot_state slots;
 
-  // List with coaster_active_task data
-  // TODO: table_lp mapping ID to task?
-  struct list2_b active_tasks;
+  // List with coaster_active_task data.  Key is Coaster job ID.
+  struct table active_tasks;
 } coaster_state;
+
+#define ACTIVE_TASKS_INIT_CAPACITY 32
 
 static turbine_exec_code
 coaster_initialize(void *context, void **state);
 
 static turbine_exec_code coaster_shutdown(void *state);
+static turbine_exec_code
+coaster_shutdown_cleanup_active(coaster_state *state);
 
 static turbine_exec_code coaster_free(void *context);
 
@@ -174,7 +177,7 @@ coaster_initialize(void *context, void **state)
   s->slots.used = 0;
   s->slots.total = cx->total_slots;
 
-  list2_b_init(&s->active_tasks);
+  table_init(&s->active_tasks, ACTIVE_TASKS_INIT_CAPACITY);
   
   coaster_rc crc = coaster_client_start(cx->service_url, &s->client);
   COASTER_CHECK(crc, TURBINE_EXEC_OTHER);
@@ -187,19 +190,34 @@ static turbine_exec_code
 coaster_shutdown(void *state)
 {
   coaster_state *s = state;
-  // TODO: iterate over active tasks?
   
   coaster_rc crc = coaster_client_stop(s->client);
   COASTER_CHECK(crc, TURBINE_EXEC_OTHER);
 
-  struct list2_b_item *node = s->active_tasks.head;
-  while (node != NULL)
-  {
-    coaster_active_task *task = (coaster_active_task*)node->data;
-    // TODO: include info on task
-    fprintf(stderr, "Coasters task still running at shutdown\n");
+  turbine_exec_code ec = coaster_shutdown_cleanup_active(s);
+  EXEC_CHECK(ec);
 
-    // TODO: free coasters job
+  free(s);
+  return TURBINE_EXEC_SUCCESS;
+}
+
+/*
+  Check any outstanding tasks at shutdown.
+  Should be called after stopping coasters client and thread.
+ */
+static turbine_exec_code
+coaster_shutdown_cleanup_active(coaster_state *state)
+{
+  TABLE_FOREACH(&state->active_tasks, entry)
+  {
+    const char *job_id = entry->key;
+    coaster_active_task *task = entry->data;
+    // TODO: include more info on task
+    // TODO: return error?
+    fprintf(stderr, "Coasters task %s still running at shutdown\n",
+                    job_id);
+
+    // TODO: free coasters job?  Is it owned by coaster C client?
 
     Tcl_Obj *cb = task->callbacks.success.code;
     if (cb != NULL)
@@ -212,9 +230,11 @@ coaster_shutdown(void *state)
     {
       Tcl_DecrRefCount(cb);
     }
+    free(task);
   }
-  list2_b_clear(&s->active_tasks); 
-  free(s);
+
+  // Free table memory
+  table_free_callback(&state->active_tasks, false, NULL); 
   return TURBINE_EXEC_SUCCESS;
 }
 
@@ -246,20 +266,24 @@ coaster_execute(Tcl_Interp *interp, const turbine_executor *exec,
   assert(s->slots.used < s->slots.total);
   s->slots.used++;
 
-  // Store task data inline in list node
-  struct list2_b_item *task_node;
-  task_node = list2_b_item_alloc(sizeof(coaster_active_task));
-  TURBINE_MALLOC_CHECK(task_node);
-
   crc = coaster_submit(s->client, job);
   COASTER_CHECK(crc, TURBINE_ERROR_EXTERNAL);
 
   DEBUG_TURBINE("COASTERS: Launched task: %.*s\n", length,
                 (const char*)work);
 
-  coaster_active_task *task = (coaster_active_task*)task_node->data;
+  coaster_active_task *task;
+  task = malloc(sizeof(*task));
+  TURBINE_MALLOC_CHECK(task);
+
   task->job = job;
   task->callbacks = callbacks;
+
+  const char *job_id = coaster_job_get_id(job);
+  assert(job_id != NULL);
+
+  bool ok = table_add(&s->active_tasks, job_id, task);
+  turbine_condition(ok, TURBINE_ERROR_OOM, "Could not add table entry");
 
   if (callbacks.success.code != NULL)
   {
@@ -270,9 +294,6 @@ coaster_execute(Tcl_Interp *interp, const turbine_executor *exec,
   {
     Tcl_IncrRefCount(callbacks.failure.code);
   }
-
-  // Track active tasks
-  list2_b_add_item(&s->active_tasks, task_node);
   
   return TURBINE_SUCCESS;
 }
@@ -284,9 +305,32 @@ check_completed(coaster_state *state, turbine_completed_task *completed,
   int completed_size = *ncompleted;
   assert(completed_size >= 1);
 
-  // TODO: ask coasters what is completed
-  // TODO: block if none completed
   *ncompleted = 0;
+  coaster_job *tmp[1];
+
+  // TODO: ask coasters what is completed
+  // TODO: limit on number returned by coasters
+  assert(*ncompleted <= completed_size);
+
+  // TODO: block if none completed
+
+  for (int i = 0; i < *ncompleted; i++) {
+    coaster_job *job = tmp[i];
+    assert(job != NULL);
+
+    const char *job_id = coaster_job_get_id(job);
+    assert(job_id != NULL);
+
+    coaster_active_task *task;
+    table_remove(&state->active_tasks, job_id, (void**)&task);
+    EXEC_CONDITION(task != NULL, TURBINE_EXEC_OTHER,
+                  "No matching entry for job id %s", job_id);
+    
+    // TODO: check for coasters success
+    completed[i].success = true;
+    completed[i].callbacks = task->callbacks;
+    free(task); // Done with task
+  }
 
   state->slots.used -= *ncompleted;
 
