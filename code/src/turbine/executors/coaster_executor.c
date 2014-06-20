@@ -41,7 +41,7 @@ typedef struct {
  */
 typedef struct {
   turbine_task_callbacks callbacks;
-  void *job; // TODO: coasters job
+  coaster_job *job;
 } coaster_active_task;
 
 /*
@@ -58,6 +58,7 @@ typedef struct coaster_state {
   turbine_exec_slot_state slots;
 
   // List with coaster_active_task data
+  // TODO: table_lp mapping ID to task?
   struct list2_b active_tasks;
 } coaster_state;
 
