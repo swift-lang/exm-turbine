@@ -23,7 +23,7 @@
 #include <assert.h>
 #include <unistd.h>
 
-#include <table.h>
+#include <table_lp.h>
 
 /* Check coaster_rc, if failed print message and return return code.
    TODO: get error info message */
@@ -66,7 +66,7 @@ typedef struct coaster_state {
   turbine_exec_slot_state slots;
 
   // List with coaster_active_task data.  Key is Coaster job ID.
-  struct table active_tasks;
+  struct table_lp active_tasks;
 } coaster_state;
 
 #define ACTIVE_TASKS_INIT_CAPACITY 32
@@ -186,7 +186,7 @@ coaster_initialize(void *context, void **state)
   s->slots.used = 0;
   s->slots.total = cx->total_slots;
 
-  table_init(&s->active_tasks, ACTIVE_TASKS_INIT_CAPACITY);
+  table_lp_init(&s->active_tasks, ACTIVE_TASKS_INIT_CAPACITY);
   
   coaster_rc crc = coaster_client_start(cx->service_url,
                         cx->service_url_len, &s->client);
@@ -218,13 +218,13 @@ coaster_shutdown(void *state)
 static turbine_exec_code
 coaster_shutdown_cleanup_active(coaster_state *state)
 {
-  TABLE_FOREACH(&state->active_tasks, entry)
+  TABLE_LP_FOREACH(&state->active_tasks, entry)
   {
-    const char *job_id = entry->key;
+    int64_t job_id = entry->key;
     coaster_active_task *task = entry->data;
     // TODO: include more info on task
     // TODO: return error?
-    fprintf(stderr, "Coasters task %s still running at shutdown\n",
+    fprintf(stderr, "Coasters job %"PRId64" still running at shutdown\n",
                     job_id);
 
     // TODO: free coasters job?  Is it owned by coaster C client?
@@ -244,7 +244,7 @@ coaster_shutdown_cleanup_active(coaster_state *state)
   }
 
   // Free table memory
-  table_free_callback(&state->active_tasks, false, NULL); 
+  table_lp_free_callback(&state->active_tasks, false, NULL); 
   return TURBINE_EXEC_SUCCESS;
 }
 
@@ -289,11 +289,9 @@ coaster_execute(Tcl_Interp *interp, const turbine_executor *exec,
   task->job = job;
   task->callbacks = callbacks;
 
-  size_t job_id_len;
-  const char *job_id = coaster_job_get_id(job, &job_id_len);
-  assert(job_id != NULL);
+  int64_t job_id = coaster_job_get_id(job);
 
-  bool ok = table_add(&s->active_tasks, job_id, task);
+  bool ok = table_lp_add(&s->active_tasks, job_id, task);
   turbine_condition(ok, TURBINE_ERROR_OOM, "Could not add table entry");
 
   if (callbacks.success.code != NULL)
@@ -329,14 +327,12 @@ check_completed(coaster_state *state, turbine_completed_task *completed,
     coaster_job *job = tmp[i];
     assert(job != NULL);
     
-    size_t job_id_len;
-    const char *job_id = coaster_job_get_id(job, &job_id_len);
-    assert(job_id != NULL);
+    int64_t job_id = coaster_job_get_id(job);
 
     coaster_active_task *task;
-    table_remove(&state->active_tasks, job_id, (void**)&task);
+    table_lp_remove(&state->active_tasks, job_id, (void**)&task);
     EXEC_CONDITION(task != NULL, TURBINE_EXEC_OTHER,
-                  "No matching entry for job id %s", job_id);
+                  "No matching entry for job id %"PRId64, job_id);
     
     // TODO: check for coasters success
     completed[i].success = true;
