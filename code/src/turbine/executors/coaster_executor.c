@@ -318,15 +318,15 @@ check_completed(coaster_state *state, turbine_completed_task *completed,
 
   while (job_count < completed_size)
   {
-    const int tmp_ids_size = 32;
-    int64_t tmp_ids[tmp_ids_size];
+    const int tmp_jobs_size = 32;
+    coaster_job *tmp_jobs[tmp_jobs_size];
     
     int maxleft = completed_size - job_count;
-    int maxjobs = (maxleft < tmp_ids_size) ? maxleft : tmp_ids_size;
+    int maxjobs = (maxleft < tmp_jobs_size) ? maxleft : tmp_jobs_size;
 
     int njobs;
     crc = coaster_check_jobs(state->client, wait_for_completion, 
-                             maxjobs, tmp_ids, &njobs);
+                             maxjobs, tmp_jobs, &njobs);
     COASTER_CHECK(crc, TURBINE_EXEC_OTHER);
 
     if (njobs > 0)
@@ -337,7 +337,8 @@ check_completed(coaster_state *state, turbine_completed_task *completed,
 
     for (int i = 0; i < njobs; i++)
     {
-      int64_t job_id = tmp_ids[i];
+      coaster_job *job = tmp_jobs[i];
+      int64_t job_id = coaster_job_get_id(job);
 
       coaster_active_task *task;
       table_lp_remove(&state->active_tasks, job_id, (void**)&task);
