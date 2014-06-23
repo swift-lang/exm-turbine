@@ -25,13 +25,12 @@
 
 #include <table_lp.h>
 
-/* Check coaster_rc, if failed print message and return return code.
-   TODO: get error info message */
+/* Check coaster_rc, if failed print message and return return code. */
 #define COASTER_CHECK(crc, err_rc) {                                  \
   coaster_rc __crc = (crc);                                           \
   turbine_condition(__crc == COASTER_SUCCESS, (err_rc),               \
-        "Error in Coaster execution: %s (%s)", "...",                 \
-        coaster_rc_string(__crc)); }
+        "Error in Coaster execution: %s (%s)",                        \
+        coaster_last_err_info(), coaster_rc_string(__crc)); }
 
 /*
   Coasters context info, e.g. configuration that remains constant
