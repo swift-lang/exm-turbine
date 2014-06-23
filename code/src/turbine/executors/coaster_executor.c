@@ -39,6 +39,7 @@
  */
 typedef struct {
   char *service_url;
+  size_t service_url_len;
   int total_slots; // TODO: fixed slots count for now
   coaster_settings *settings;
 } coaster_context;
@@ -90,9 +91,10 @@ coaster_poll(void *state, turbine_completed_task *completed,
 static turbine_exec_code
 coaster_slots(void *state, turbine_exec_slot_state *slots);
 
-static turbine_exec_code 
-coaster_init_context(coaster_context *context, const char *service_url,
-              const char *settings_str);
+static turbine_exec_code
+coaster_init_context(coaster_context *context,
+      const char *service_url, size_t service_url_len,
+      const char *settings_str, size_t settings_str_len);
 
 static turbine_exec_code
 check_completed(coaster_state *state, turbine_completed_task *completed,
@@ -100,7 +102,8 @@ check_completed(coaster_state *state, turbine_completed_task *completed,
 
 static turbine_exec_code 
 init_coaster_executor(turbine_executor *exec, int adlb_work_type,
-                      const char *service_url, const char *settings_str)
+      const char *service_url, size_t service_url_len,
+      const char *settings_str, size_t settings_str_len)
 {
   turbine_exec_code ec;
 
@@ -110,7 +113,8 @@ init_coaster_executor(turbine_executor *exec, int adlb_work_type,
 
   coaster_context *cx = malloc(sizeof(coaster_context));
   EXEC_MALLOC_CHECK(cx);
-  ec = coaster_init_context(cx, service_url, settings_str);
+  ec = coaster_init_context(cx, service_url, service_url_len,
+                            settings_str, settings_str_len);
   EXEC_CHECK(ec);
   
   exec->context = cx;
@@ -129,31 +133,36 @@ init_coaster_executor(turbine_executor *exec, int adlb_work_type,
 }
 
 static turbine_exec_code 
-coaster_init_context(coaster_context *context, const char *service_url,
-      const char *settings_str)
+coaster_init_context(coaster_context *context,
+      const char *service_url, size_t service_url_len,
+      const char *settings_str, size_t settings_str_len)
 {
   // TODO: load config, etc
   context->total_slots = 4;
-  context->service_url = strdup(service_url);
+  context->service_url = malloc(service_url_len);
   EXEC_MALLOC_CHECK(context->service_url);
+  memcpy(context->service_url, service_url, service_url_len);
+  context->service_url_len = service_url_len;
   
   coaster_rc crc = coaster_settings_create(&context->settings);
   COASTER_CHECK(crc, TURBINE_EXEC_OOM);
   
-  crc = coaster_settings_parse(context->settings, settings_str);
+  crc = coaster_settings_parse(context->settings, settings_str,
+                               settings_str_len);
   COASTER_CHECK(crc, TURBINE_EXEC_OOM);
 
   return TURBINE_EXEC_SUCCESS;
 }
 
 turbine_code
-coaster_executor_register(int adlb_work_type, const char *service_url,
-                          const char *settings_str)
+coaster_executor_register(int adlb_work_type,
+      const char *service_url, size_t service_url_len,
+      const char *settings_str, size_t settings_str_len)
 {
   turbine_exec_code ec;
   turbine_executor exec;
   ec = init_coaster_executor(&exec, adlb_work_type, service_url,
-                             settings_str);
+            service_url_len, settings_str, settings_str_len);
   TURBINE_EXEC_CHECK_MSG(ec, TURBINE_ERROR_EXTERNAL,
                "error initializing Coasters executor");
 
@@ -179,7 +188,8 @@ coaster_initialize(void *context, void **state)
 
   table_init(&s->active_tasks, ACTIVE_TASKS_INIT_CAPACITY);
   
-  coaster_rc crc = coaster_client_start(cx->service_url, &s->client);
+  coaster_rc crc = coaster_client_start(cx->service_url,
+                        cx->service_url_len, &s->client);
   COASTER_CHECK(crc, TURBINE_EXEC_OTHER);
 
   *state = s;
@@ -279,7 +289,8 @@ coaster_execute(Tcl_Interp *interp, const turbine_executor *exec,
   task->job = job;
   task->callbacks = callbacks;
 
-  const char *job_id = coaster_job_get_id(job);
+  size_t job_id_len;
+  const char *job_id = coaster_job_get_id(job, &job_id_len);
   assert(job_id != NULL);
 
   bool ok = table_add(&s->active_tasks, job_id, task);
@@ -317,8 +328,9 @@ check_completed(coaster_state *state, turbine_completed_task *completed,
   for (int i = 0; i < *ncompleted; i++) {
     coaster_job *job = tmp[i];
     assert(job != NULL);
-
-    const char *job_id = coaster_job_get_id(job);
+    
+    size_t job_id_len;
+    const char *job_id = coaster_job_get_id(job, &job_id_len);
     assert(job_id != NULL);
 
     coaster_active_task *task;
