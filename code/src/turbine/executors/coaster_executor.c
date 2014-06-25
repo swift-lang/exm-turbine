@@ -350,8 +350,12 @@ check_completed(coaster_state *state, turbine_completed_task *completed,
       EXEC_CONDITION(task != NULL, TURBINE_EXEC_OTHER,
                     "No matching entry for job id %"PRId64, job_id);
       
-      // TODO: check for coasters success
-      completed[job_count].success = true;
+      coaster_job_status status;
+      crc = coaster_job_status_code(job, &status);
+      COASTER_CHECK(crc, TURBINE_EXEC_OTHER);
+      
+      // TODO: some way to get back info about cause of failure?
+      completed[job_count].success = (status == COMPLETED);
       completed[job_count].callbacks = task->callbacks;
       job_count++;
       free(task); // Done with task
