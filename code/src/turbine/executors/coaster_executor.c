@@ -217,16 +217,23 @@ coaster_shutdown(void *state)
 static turbine_exec_code
 coaster_shutdown_cleanup_active(coaster_state *state)
 {
+  coaster_rc crc;
+
   TABLE_LP_FOREACH(&state->active_tasks, entry)
   {
     int64_t job_id = entry->key;
     coaster_active_task *task = entry->data;
-    // TODO: include more info on task
-    // TODO: return error?
-    fprintf(stderr, "Coasters job %"PRId64" still running at shutdown\n",
-                    job_id);
 
-    // TODO: free coasters job?  Is it owned by coaster C client?
+    char *job_str;
+    size_t job_str_len;
+    crc = coaster_job_to_string(task->job, &job_str, &job_str_len);
+    fprintf(stderr, "Coaster job %"PRId64" still running at shutdown: "
+                    "%s\n", job_id, job_str);
+    free(job_str);
+
+    // Free coasters job now that client is shut down
+    crc = coaster_job_free(task->job);
+    COASTER_CHECK(crc, TURBINE_EXEC_OTHER);
 
     Tcl_Obj *cb = task->callbacks.success.code;
     if (cb != NULL)
@@ -257,7 +264,6 @@ coaster_free(void *context)
   free(cx->service_url);
   free(cx);
   
-  // TODO: clean up other things?
   return TURBINE_EXEC_SUCCESS;
 }
 
