@@ -106,7 +106,7 @@ init_coaster_executor(turbine_executor *exec, int adlb_work_type,
 {
   turbine_exec_code ec;
 
-  exec->name = COASTERS_EXECUTOR_NAME;
+  exec->name = COASTER_EXECUTOR_NAME;
   exec->adlb_work_type = adlb_work_type;
   exec->notif_mode = EXEC_POLLING;
 
@@ -145,10 +145,11 @@ coaster_init_context(coaster_context *context,
   
   coaster_rc crc = coaster_settings_create(&context->settings);
   COASTER_CHECK(crc, TURBINE_EXEC_OOM);
-  
-  crc = coaster_settings_parse(context->settings, settings_str,
-                               settings_str_len);
-  COASTER_CHECK(crc, TURBINE_EXEC_OOM);
+ 
+  // TODO: reenable when implemented
+  //crc = coaster_settings_parse(context->settings, settings_str,
+  //                             settings_str_len);
+  //COASTER_CHECK(crc, TURBINE_EXEC_OOM);
 
   return TURBINE_EXEC_SUCCESS;
 }
@@ -284,7 +285,7 @@ coaster_execute(Tcl_Interp *interp, const turbine_executor *exec,
   crc = coaster_submit(s->client, job);
   COASTER_CHECK(crc, TURBINE_ERROR_EXTERNAL);
 
-  DEBUG_TURBINE("COASTERS: Launched task: %.*s\n", length,
+  DEBUG_TURBINE("COASTER: Launched task: %.*s\n", length,
                 (const char*)work);
 
   coaster_active_task *task;

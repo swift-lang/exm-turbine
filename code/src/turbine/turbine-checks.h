@@ -53,13 +53,13 @@
     }}
 
 #define TURBINE_MALLOC_CHECK(p) { \
-  if (p == NULL) { \
+  if ((p) == NULL) { \
     TURBINE_ERR_PRINTF("CHECK FAILED: %s:%i\n", __FILE__, __LINE__);   \
     TURBINE_ERR_PRINTF("Out of memory"); \
     return TURBINE_ERROR_OOM; }}
 
 #define EXEC_MALLOC_CHECK(p) { \
-  if (p == NULL) { \
+  if ((p) == NULL) { \
     TURBINE_ERR_PRINTF("CHECK FAILED: %s:%i\n", __FILE__, __LINE__);   \
     TURBINE_ERR_PRINTF("Out of memory"); \
     return TURBINE_EXEC_OOM; }}

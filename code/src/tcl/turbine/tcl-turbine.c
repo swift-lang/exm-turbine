@@ -56,6 +56,9 @@
 #include "src/turbine/async_exec.h"
 #include "src/turbine/executors/noop_executor.h"
 
+#include <coasters.h>
+#include "src/turbine/executors/coaster_executor.h"
+
 #include "src/tcl/util.h"
 #include "src/tcl/turbine/tcl-turbine.h"
 
@@ -191,6 +194,9 @@ set_namespace_constants(Tcl_Interp* interp)
 
   tcl_set_string(interp, "::turbine::NOOP_EXEC_NAME",
                  NOOP_EXECUTOR_NAME);
+  
+  tcl_set_string(interp, "::turbine::COASTER_EXEC_NAME",
+                 COASTER_EXECUTOR_NAME);
 }
 
 static int
@@ -1077,6 +1083,35 @@ Noop_Exec_Register_Cmd(ClientData cdata, Tcl_Interp *interp,
 }
 
 /*
+  turbine::coaster_register <adlb work type> <service url>
+                            <settings string>
+ */
+static int
+Coaster_Register_Cmd(ClientData cdata, Tcl_Interp *interp,
+                  int objc, Tcl_Obj *const objv[])
+{
+  TCL_ARGS(4);
+  int work_type;
+  int rc;
+  rc = Tcl_GetIntFromObj(interp, objv[1], &work_type);
+  TCL_CHECK(rc);
+
+  const char *url, *settings;
+  int url_len, settings_len;
+  
+  url = Tcl_GetStringFromObj(objv[2], &url_len);
+  settings = Tcl_GetStringFromObj(objv[3], &settings_len);
+
+  turbine_code tc;
+  tc = coaster_executor_register(work_type, url, (size_t)url_len,
+                                 settings, (size_t)settings_len);
+  TCL_CONDITION(tc == TURBINE_SUCCESS,
+                "Could not register Coaster executor");
+  
+  return TCL_OK;
+}
+
+/*
   turbine::async_exec_worker_loop <executor name>
  */
 static int
@@ -1138,11 +1173,58 @@ Noop_Exec_Run_Cmd(ClientData cdata, Tcl_Interp *interp,
 
   if (objc >= 4)
   {
-    callbacks.success.code = objv[3];
+    callbacks.failure.code = objv[3];
   }
 
   tc = noop_execute(interp, noop_exec, str, len, callbacks);
   TCL_CONDITION(tc == TURBINE_SUCCESS, "Error executing noop task");
+  
+  return TCL_OK;
+}
+
+/*
+  turbine::coaster_run <executable> <argument list> 
+              <success callback> <failure callback>
+  TODO: additional parameters
+ */
+static int
+Coaster_Run_Cmd(ClientData cdata, Tcl_Interp *interp,
+                  int objc, Tcl_Obj *const objv[])
+{
+  TCL_CONDITION(objc == 5, "Wrong # args");
+  turbine_code tc;
+ 
+  const turbine_executor *coaster_exec;
+  coaster_exec = turbine_get_async_exec(COASTER_EXECUTOR_NAME);
+  TCL_CONDITION(coaster_exec != NULL, "Coaster executor not registered");
+
+  const char *executable;
+  int executable_len;
+  executable = Tcl_GetStringFromObj(objv[1], &executable_len);
+
+  // TODO: list arguments
+  int argc = 0;
+  const char *argv[0];
+  size_t arg_lens[0];
+  
+  turbine_task_callbacks callbacks;
+  callbacks.success.code = objv[3];
+  callbacks.failure.code = objv[4];
+
+  coaster_job *job;
+  coaster_rc crc;
+
+  // TODO: get job manager
+  const char *job_manager = NULL;
+  size_t job_manager_len = 0;
+
+  crc = coaster_job_create(executable, (size_t)executable_len, argc,
+                argv, arg_lens, job_manager, job_manager_len, &job);
+  TCL_CONDITION(crc == COASTER_SUCCESS, "Error constructing coaster job: "
+                "%s", coaster_last_err_info())
+
+  tc = coaster_execute(interp, coaster_exec, job, callbacks);
+  TCL_CONDITION(tc == TURBINE_SUCCESS, "Error executing coaster task");
   
   return TCL_OK;
 }
@@ -1190,6 +1272,9 @@ Tclturbine_Init(Tcl_Interp* interp)
 
   COMMAND("noop_exec_register", Noop_Exec_Register_Cmd);
   COMMAND("noop_exec_run", Noop_Exec_Run_Cmd);
+  
+  COMMAND("coaster_register", Coaster_Register_Cmd);
+  COMMAND("coaster_run", Coaster_Run_Cmd);
 
   Tcl_Namespace* turbine =
     Tcl_FindNamespace(interp, "::turbine::c", NULL, 0);

@@ -23,8 +23,8 @@
 // Use C-based coasters API
 #include <coasters.h>
 
-// Registered name for coasters executor
-#define COASTERS_EXECUTOR_NAME "COASTERS"
+// Registered name for coaster executor
+#define COASTER_EXECUTOR_NAME "COASTER"
 
 /*
   Register a coaster executor with basic configuration settings.
@@ -35,8 +35,8 @@ coaster_executor_register(int adlb_work_type,
       const char *settings_str, size_t settings_str_len);
 
 /*
-  Execute a coasters job.  The job should be constructed with functions
-  in the coasters C API.
+  Execute a coaster job.  The job should be constructed with functions
+  in the coaster C API.
  */
 turbine_code
 coaster_execute(Tcl_Interp *interp, const turbine_executor *exec,
