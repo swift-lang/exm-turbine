@@ -24,6 +24,7 @@ source $( dirname $0 )/setup.sh > ${OUTPUT} 2>&1
 PROCS=3
 export TURBINE_COASTER_WORKERS=1
 
+#TODO: start service
 export COASTER_SERVICE_URL="127.0.0.1:53001"
 export COASTER_SETTINGS=""
 
