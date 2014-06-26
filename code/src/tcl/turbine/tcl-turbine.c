@@ -1107,7 +1107,22 @@ Coaster_Register_Cmd(ClientData cdata, Tcl_Interp *interp,
                                  settings, (size_t)settings_len);
   TCL_CONDITION(tc == TURBINE_SUCCESS,
                 "Could not register Coaster executor");
+
+  coaster_log_level threshold = COASTER_LOG_WARN;
   
+  // Turn on debugging based on debug tokens.
+  if (turbine_debug_enabled) {
+#ifdef ENABLE_DEBUG_COASTER
+    // Only enable detailed debugging if coaster debugging on
+    threshold = COASTER_LOG_DEBUG;
+#else 
+    threshold = COASTER_LOG_INFO;
+#endif
+  }
+
+  coaster_rc crc = coaster_set_log_threshold(threshold);
+  TCL_CONDITION(crc == COASTER_SUCCESS, "Could not set log threshold");
+
   return TCL_OK;
 }
 
