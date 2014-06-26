@@ -112,10 +112,6 @@ ifeq ($(ENABLE_STATIC),1)
   TCL_TURBINE_LIBS += $(TCL_TURBINE_A)
 endif
 
-ifeq ($(ENABLE_STATIC_PKG),1)
-  TCL_TURBINE_LIBS += $(STATIC_PKG_A)
-endif
-
 PACKAGE_ARTIFACTS += $(TCL_TURBINE_LIBS)
 
 ifeq ($(ENABLE_SHARED),1)
@@ -438,7 +434,6 @@ TAGS: deps.txt
 
 ### LINK
 
-# This rule produces a false autoscan message on token 'install'
 $(TCL_TURBINE_A): $(TURBINE_OBJS)
 ifeq ($(ENABLE_STATIC),0)
 	@echo "Static libraries were disabled, cannot build target!"
@@ -651,7 +646,6 @@ install.txt: $(PACKAGE_ARTIFACTS) $(BINS) $(EXPORTS) $(SCRIPTS) $(TURBINE_HEADER
 	$(E) cp $(CP_ARGS) $(BINS)               $(INSTALL_BIN)
 	$(E) cp $(CP_ARGS) lib/*.tcl             $(INSTALL_LIB)
 	$(E) cp $(CP_ARGS) $(TCL_TURBINE_LIBS)    $(INSTALL_LIB)
-	echo MAINWRAP $(SCRIPTS_MAINWRAP)
 	$(E) $(CP_PARENTS) $(CP_ARGS) $(SCRIPTS) $(INSTALL_PREFIX)
 	$(E) $(CP_PARENTS) $(CP_ARGS) $(EXPORTS) $(INSTALL_PREFIX)
 	$(E) cp $(CP_ARGS) $(TURBINE_HEADERS)    $(INSTALL_INCLUDE)
