@@ -356,9 +356,13 @@ check_completed(coaster_state *state, turbine_completed_task *completed,
       COASTER_CHECK(crc, TURBINE_EXEC_OTHER);
       
       // TODO: some way to get back info about cause of failure?
+      // TODO: some way to pass job info to callback
       completed[job_count].success = (status == COMPLETED);
       completed[job_count].callbacks = task->callbacks;
       job_count++;
+
+      crc = coaster_job_free(job);
+      COASTER_CHECK(crc, TURBINE_EXEC_OTHER);
       free(task); // Done with task
     }
 
