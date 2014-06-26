@@ -48,6 +48,7 @@
 #define turbine_condition(condition, code, format, args...) \
   { if (! (condition))                                      \
     {                                                       \
+       TURBINE_ERR_PRINTF("CONDITION FAILED: %s:%i\n", __FILE__, __LINE__);   \
        TURBINE_ERR_PRINTF(format, ## args);                             \
        return code;                                         \
     }}
