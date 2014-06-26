@@ -1208,6 +1208,7 @@ Coaster_Run_Cmd(ClientData cdata, Tcl_Interp *interp,
 {
   TCL_CONDITION(objc == 5, "Wrong # args");
   turbine_code tc;
+  int rc;
  
   const turbine_executor *coaster_exec;
   coaster_exec = turbine_get_async_exec(COASTER_EXECUTOR_NAME);
@@ -1218,10 +1219,29 @@ Coaster_Run_Cmd(ClientData cdata, Tcl_Interp *interp,
   executable = Tcl_GetStringFromObj(objv[1], &executable_len);
 
   // TODO: list arguments
-  int argc = 0;
-  const char *argv[0];
-  size_t arg_lens[0];
+  int argc;
+  Tcl_Obj **arg_objs;
+  rc = Tcl_ListObjGetElements(interp, objv[2], &argc, &arg_objs);
+  TCL_CHECK(rc);
+
+  const char **argv = NULL;
+  size_t *arg_lens = NULL;
   
+  if (argc > 0)
+  {
+    argv = malloc(sizeof(argv[0]) * (size_t)argc);
+    TCL_MALLOC_CHECK(argv);
+    arg_lens = malloc(sizeof(arg_lens[0]) * (size_t)argc);
+    TCL_MALLOC_CHECK(arg_lens);
+
+    for (int i = 0; i < argc; i++)
+    {
+      int tmp_len;
+      argv[i] = Tcl_GetStringFromObj(arg_objs[i], &tmp_len);
+      arg_lens[i] = (size_t)tmp_len;
+    }
+  }
+
   turbine_task_callbacks callbacks;
   callbacks.success.code = objv[3];
   callbacks.failure.code = objv[4];
@@ -1235,8 +1255,19 @@ Coaster_Run_Cmd(ClientData cdata, Tcl_Interp *interp,
 
   crc = coaster_job_create(executable, (size_t)executable_len, argc,
                 argv, arg_lens, job_manager, job_manager_len, &job);
+
+  if (argv != NULL)
+  {
+    free(argv);
+  }
+  
+  if (arg_lens != NULL)
+  {
+    free(arg_lens);
+  }
   TCL_CONDITION(crc == COASTER_SUCCESS, "Error constructing coaster job: "
                 "%s", coaster_last_err_info())
+
 
   tc = coaster_execute(interp, coaster_exec, job, callbacks);
   TCL_CONDITION(tc == TURBINE_SUCCESS, "Error executing coaster task");
