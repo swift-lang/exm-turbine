@@ -282,6 +282,11 @@ ifeq ($(HAVE_JULIA),1)
 	LIBS += -L$(JULIA_LIB) -ljulia
 endif
 
+ifeq ($(HAVE_COASTERS),1)
+	COASTERS_LIB := $(USE_COASTERS)/lib
+	LIBS += -L$(COASTERS_LIB) -lcoasterclient
+endif
+
 # If we are using libtcl*.a, need to always include these libraries
 # TODO: would also be needed if we're doing full static link
 ifeq ($(strip $(TCL_LIB_SO)),)
@@ -309,6 +314,9 @@ ifeq ($(HAVE_R),1)
 endif
 ifeq ($(HAVE_JULIA),1)
 	RPATHS += -Wl,-rpath -Wl,$(JULIA_LIB)
+endif
+ifeq ($(HAVE_COASTERS),1)
+	RPATHS += -Wl,-rpath -Wl,$(COASTERS_LIB)
 endif
 
 ### INCLUDES
