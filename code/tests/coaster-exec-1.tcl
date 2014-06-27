@@ -19,7 +19,7 @@ package require turbine 0.5.0
 set COASTER_WORK_TYPE 1
 
 proc coaster_task { x i } {
-  turbine::c::coaster_run "echo" [ list Hello World ] \
+  turbine::coaster_run "echo" [ list Hello World ] \
           "coaster_task_success $x $i" "coaster_task_fail"
 }
 
@@ -44,8 +44,9 @@ proc main {} {
   }
 }
 
-turbine::defaults
-turbine::init $servers Turbine [ list $turbine::COASTER_EXEC_NAME ]
+set layout [ dict create servers 1 workers 2 workers_by_type \
+                  [ dict create WORK 1 $turbine::COASTER_EXEC_NAME 1 ] ]
+turbine::init $layout Turbine
 turbine::enable_read_refcount
 
 set coaster_work_type [ turbine::adlb_work_type $turbine::COASTER_EXEC_NAME ]
@@ -53,7 +54,7 @@ set coaster_work_type [ turbine::adlb_work_type $turbine::COASTER_EXEC_NAME ]
 set service_url $env(COASTER_SERVICE_URL)
 set settings $env(COASTER_SETTINGS)
 
-turbine::c::coaster_register $coaster_work_type $service_url $settings
+turbine::coaster_register $coaster_work_type $service_url $settings
 turbine::start main 
 turbine::finalize
 
