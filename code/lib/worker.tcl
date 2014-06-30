@@ -39,7 +39,14 @@ namespace eval turbine {
 
     # Worker that executes tasks via async executor
     proc async_exec_worker { work_type rules startup_cmd  } {
-
+        global env
+        set config_key "TURBINE_${work_type}_CONFIG"
+        set config_str ""
+        if [ info exists env($config_key) ] {
+          set config_str $env($config_key)
+        }
+        async_exec_configure $work_type $config_str
+      
         eval $startup_cmd
         if { [ adlb::rank ] == 0 } {
             # First rank should start execution

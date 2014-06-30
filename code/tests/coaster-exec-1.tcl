@@ -52,11 +52,7 @@ turbine::enable_read_refcount
 
 set coaster_work_type [ turbine::adlb_work_type $turbine::COASTER_EXEC_NAME ]
 
-set service_url $env(COASTER_SERVICE_URL)
-set settings $env(COASTER_SETTINGS)
-
 turbine::check_can_execute $turbine::COASTER_EXEC_NAME
-turbine::async_exec_configure $turbine::COASTER_EXEC_NAME $settings
 turbine::start main 
 turbine::finalize
 

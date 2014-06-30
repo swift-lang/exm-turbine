@@ -26,7 +26,7 @@ export TURBINE_COASTER_WORKERS=1
 
 #TODO: start service
 export COASTER_SERVICE_URL="127.0.0.1:53001"
-export COASTER_SETTINGS=""
+export TURBINE_COASTER_CONFIG=""
 
 bin/turbine -l -n ${PROCS} ${SCRIPT} >> ${OUTPUT} 2>&1
 [[ ${?} == 0 ]] || test_result 1
