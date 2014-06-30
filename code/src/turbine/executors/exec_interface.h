@@ -63,17 +63,25 @@ typedef struct {
  */
 
 /*
-  Initialize: initialize executor before running tasks.
+  Configure: before starting executor, do any configuration.
+  Input is a single string, which can be interpreted in an
+  executor-specific way
+ */
+typedef turbine_exec_code (*turbine_exec_configure)(void **context,
+                           const char *config, size_t config_len);
+
+/*
+  Start: start executor before running tasks.
                Passed context pointer.
                Should initialize state pointer
  */
-typedef turbine_exec_code (*turbine_exec_init)(void *context,
+typedef turbine_exec_code (*turbine_exec_start)(void *context,
                                                void **state);
 
 /*
-  Shutdown: shut down initialized executor
+  Stop: stop started executor
  */
-typedef turbine_exec_code (*turbine_exec_shutdown)(void *state);
+typedef turbine_exec_code (*turbine_exec_stop)(void *state);
 
 /*
   Free: free memory for shut down executor
@@ -115,7 +123,6 @@ typedef enum
 
 typedef struct turbine_executor {
   const char *name;
-  int adlb_work_type; // Type to request from adlb
   async_exec_notif notif_mode;
   void *context; // Context info
   void *state; // Internal state to pass to executor functions
@@ -123,8 +130,9 @@ typedef struct turbine_executor {
   /*
     Function pointers for executors
    */
-  turbine_exec_init initialize;
-  turbine_exec_shutdown shutdown;
+  turbine_exec_configure configure;
+  turbine_exec_start start;
+  turbine_exec_stop stop;
   turbine_exec_free free;
   turbine_exec_wait wait;
   turbine_exec_poll poll;
@@ -132,7 +140,9 @@ typedef struct turbine_executor {
 } turbine_executor;
 
 /*
-  Register executor with async executors mode
+  Register executor with async executors module.
+  This can be called anytime, including before the module is
+  initialized.
  */
 turbine_code
 turbine_add_async_exec(turbine_executor executor);

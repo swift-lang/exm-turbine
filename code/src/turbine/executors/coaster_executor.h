@@ -30,9 +30,7 @@
   Register a coaster executor with basic configuration settings.
  */
 turbine_code
-coaster_executor_register(int adlb_work_type,
-      const char *service_url, size_t service_url_len,
-      const char *settings_str, size_t settings_str_len);
+coaster_executor_register(void);
 
 /*
   Execute a coaster job.  The job should be constructed with functions

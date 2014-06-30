@@ -1062,20 +1062,16 @@ int Blob_Init(Tcl_Interp* interp);
 
 
 /*
-  turbine::noop_exec_register <adlb work type>
+  turbine::noop_exec_register
  */
 static int
 Noop_Exec_Register_Cmd(ClientData cdata, Tcl_Interp *interp,
                   int objc, Tcl_Obj *const objv[])
 {
-  TCL_ARGS(2);
-  int work_type;
-  int rc;
-  rc = Tcl_GetIntFromObj(interp, objv[1], &work_type);
-  TCL_CHECK(rc);
+  TCL_ARGS(1);
 
   turbine_code tc;
-  tc = noop_executor_register(work_type);
+  tc = noop_executor_register();
   TCL_CONDITION(tc == TURBINE_SUCCESS,
                 "Could not register noop executor");
   
@@ -1083,28 +1079,16 @@ Noop_Exec_Register_Cmd(ClientData cdata, Tcl_Interp *interp,
 }
 
 /*
-  turbine::coaster_register <adlb work type> <service url>
-                            <settings string>
+  turbine::coaster_register
  */
 static int
 Coaster_Register_Cmd(ClientData cdata, Tcl_Interp *interp,
                   int objc, Tcl_Obj *const objv[])
 {
-  TCL_ARGS(4);
-  int work_type;
-  int rc;
-  rc = Tcl_GetIntFromObj(interp, objv[1], &work_type);
-  TCL_CHECK(rc);
-
-  const char *url, *settings;
-  int url_len, settings_len;
+  TCL_ARGS(1);
   
-  url = Tcl_GetStringFromObj(objv[2], &url_len);
-  settings = Tcl_GetStringFromObj(objv[3], &settings_len);
-
   turbine_code tc;
-  tc = coaster_executor_register(work_type, url, (size_t)url_len,
-                                 settings, (size_t)settings_len);
+  tc = coaster_executor_register();
   TCL_CONDITION(tc == TURBINE_SUCCESS,
                 "Could not register Coaster executor");
 
@@ -1126,15 +1110,43 @@ Coaster_Register_Cmd(ClientData cdata, Tcl_Interp *interp,
   return TCL_OK;
 }
 
+
+/* usage: async_exec_configure <executor name> <config string>
+   Configure registered executor. 
+ */
+static int
+Async_Exec_Configure_Cmd(ClientData cdata, Tcl_Interp* interp,
+                        int objc, Tcl_Obj* const objv[])
+{
+  TCL_ARGS(3);
+
+  turbine_code tc;
+
+  const char *exec_name = Tcl_GetString(objv[1]);
+  int config_len;
+  const char *config = Tcl_GetStringFromObj(objv[2], &config_len);
+
+  turbine_executor *exec = turbine_get_async_exec(exec_name);
+  TCL_CONDITION(exec != NULL, "Executor %s not registered", exec_name);
+  
+  tc = turbine_configure_exec(exec, config, (size_t)config_len);
+  TCL_CONDITION(tc == TURBINE_SUCCESS,
+      "Could not configure executor %s", exec_name);
+
+  return TCL_OK;
+}
+
 /*
-  turbine::async_exec_worker_loop <executor name>
+  turbine::async_exec_worker_loop <executor name> <adlb work type>
  */
 static int
 Async_Exec_Worker_Loop_Cmd(ClientData cdata, Tcl_Interp *interp,
                   int objc, Tcl_Obj *const objv[])
 {
-  TCL_ARGS(2);
- 
+  TCL_ARGS(3);
+
+  int rc;
+  turbine_code tc;
 
   // Maintain separate buffer from xfer, since xfer may be
   // used in code that we call.
@@ -1144,9 +1156,15 @@ Async_Exec_Worker_Loop_Cmd(ClientData cdata, Tcl_Interp *interp,
 
   const char *exec_name = Tcl_GetString(objv[1]);
   
-  turbine_code tc;
-  tc = turbine_async_worker_loop(interp, exec_name,
-                                       buffer, buffer_size);
+  turbine_executor *exec = turbine_get_async_exec(exec_name);
+  TCL_CONDITION(exec != NULL, "Executor %s not registered", exec_name);
+  
+  int adlb_work_type;
+  rc = Tcl_GetIntFromObj(interp, objv[2], &adlb_work_type);
+  TCL_CHECK(rc);
+
+  tc = turbine_async_worker_loop(interp, exec, adlb_work_type,
+                                 buffer, buffer_size);
   free(buffer);
   
   if (tc == TURBINE_ERROR_EXTERNAL)
@@ -1313,7 +1331,8 @@ Tclturbine_Init(Tcl_Interp* interp)
   COMMAND("debug_on",    Turbine_Debug_On_Cmd);
   COMMAND("debug",       Turbine_Debug_Cmd);
   COMMAND("check_str_int", Turbine_StrInt_Cmd);
-  
+
+  COMMAND("async_exec_configure", Async_Exec_Configure_Cmd);
   COMMAND("async_exec_worker_loop", Async_Exec_Worker_Loop_Cmd);
 
   COMMAND("noop_exec_register", Noop_Exec_Register_Cmd);

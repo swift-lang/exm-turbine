@@ -24,7 +24,7 @@
 #define NOOP_EXECUTOR_NAME "NOOP"
 
 turbine_code
-noop_executor_register(int adlb_work_type);
+noop_executor_register();
 
 /*
   Execute a task

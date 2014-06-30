@@ -32,6 +32,9 @@
         "Error in Coaster execution: %s (%s)",                        \
         coaster_last_err_info(), coaster_rc_string(__crc)); }
 
+/* Environment variable names */
+#define COASTER_ENV_URL "COASTER_SERVICE_URL"
+
 /*
   Coasters context info, e.g. configuration that remains constant
   over entire run.
@@ -71,11 +74,15 @@ typedef struct coaster_state {
 #define ACTIVE_TASKS_INIT_CAPACITY 32
 
 static turbine_exec_code
-coaster_initialize(void *context, void **state);
+coaster_configure(void **context, const char *config,
+                  size_t config_len);
 
-static turbine_exec_code coaster_shutdown(void *state);
 static turbine_exec_code
-coaster_shutdown_cleanup_active(coaster_state *state);
+coaster_start(void *context, void **state);
+
+static turbine_exec_code coaster_stop(void *state);
+static turbine_exec_code
+coaster_cleanup_active(coaster_state *state);
 
 static turbine_exec_code coaster_free(void *context);
 
@@ -91,38 +98,22 @@ static turbine_exec_code
 coaster_slots(void *state, turbine_exec_slot_state *slots);
 
 static turbine_exec_code
-coaster_init_context(coaster_context *context,
-      const char *service_url, size_t service_url_len,
-      const char *settings_str, size_t settings_str_len);
-
-static turbine_exec_code
 check_completed(coaster_state *state, turbine_completed_task *completed,
                int *ncompleted, bool wait_for_completion);
 
 static turbine_exec_code 
-init_coaster_executor(turbine_executor *exec, int adlb_work_type,
-      const char *service_url, size_t service_url_len,
-      const char *settings_str, size_t settings_str_len)
+init_coaster_executor(turbine_executor *exec)
 {
-  turbine_exec_code ec;
-
   exec->name = COASTER_EXECUTOR_NAME;
-  exec->adlb_work_type = adlb_work_type;
   exec->notif_mode = EXEC_POLLING;
 
-  coaster_context *cx = malloc(sizeof(coaster_context));
-  EXEC_MALLOC_CHECK(cx);
-  ec = coaster_init_context(cx, service_url, service_url_len,
-                            settings_str, settings_str_len);
-  EXEC_CHECK(ec);
-  
-  exec->context = cx;
-
+  exec->context = NULL;
   exec->state = NULL;
 
   // Initialize all function pointers
-  exec->initialize = coaster_initialize;
-  exec->shutdown = coaster_shutdown;
+  exec->configure = coaster_configure;
+  exec->start = coaster_start;
+  exec->stop = coaster_stop;
   exec->free = coaster_free;
   exec->wait = coaster_wait;
   exec->poll = coaster_poll;
@@ -131,38 +122,12 @@ init_coaster_executor(turbine_executor *exec, int adlb_work_type,
   return TURBINE_EXEC_SUCCESS;
 }
 
-static turbine_exec_code 
-coaster_init_context(coaster_context *context,
-      const char *service_url, size_t service_url_len,
-      const char *settings_str, size_t settings_str_len)
-{
-  // TODO: load config, etc
-  context->total_slots = 4;
-  context->service_url = malloc(service_url_len);
-  EXEC_MALLOC_CHECK(context->service_url);
-  memcpy(context->service_url, service_url, service_url_len);
-  context->service_url_len = service_url_len;
-  
-  coaster_rc crc = coaster_settings_create(&context->settings);
-  COASTER_CHECK(crc, TURBINE_EXEC_OOM);
- 
-  // TODO: reenable when implemented
-  //crc = coaster_settings_parse(context->settings, settings_str,
-  //                             settings_str_len);
-  //COASTER_CHECK(crc, TURBINE_EXEC_OOM);
-
-  return TURBINE_EXEC_SUCCESS;
-}
-
 turbine_code
-coaster_executor_register(int adlb_work_type,
-      const char *service_url, size_t service_url_len,
-      const char *settings_str, size_t settings_str_len)
+coaster_executor_register(void)
 {
   turbine_exec_code ec;
   turbine_executor exec;
-  ec = init_coaster_executor(&exec, adlb_work_type, service_url,
-            service_url_len, settings_str, settings_str_len);
+  ec = init_coaster_executor(&exec);
   TURBINE_EXEC_CHECK_MSG(ec, TURBINE_ERROR_EXTERNAL,
                "error initializing Coasters executor");
 
@@ -174,7 +139,42 @@ coaster_executor_register(int adlb_work_type,
 }
 
 static turbine_exec_code
-coaster_initialize(void *context, void **state)
+coaster_configure(void **context, const char *config,
+                  size_t config_len)
+{
+  coaster_context *cx = malloc(sizeof(coaster_context));
+  EXEC_MALLOC_CHECK(cx);
+  
+  // TODO: load config, etc
+  cx->total_slots = 4;
+  
+  coaster_rc crc = coaster_settings_create(&cx->settings);
+  COASTER_CHECK(crc, TURBINE_EXEC_OOM);
+ 
+  // TODO: reenable when implemented
+  //crc = coaster_settings_parse(cx->settings, settings_str,
+  //                             settings_str_len);
+  //COASTER_CHECK(crc, TURBINE_EXEC_OOM);
+ 
+  const char *service_url = getenv(COASTER_ENV_URL);
+
+  if (service_url == NULL)
+  {
+    service_url = "127.0.0.1:53001";
+  }
+
+  size_t service_url_len = strlen(service_url);
+  cx->service_url = malloc(service_url_len);
+  EXEC_MALLOC_CHECK(cx->service_url);
+  memcpy(cx->service_url, service_url, service_url_len);
+  cx->service_url_len = service_url_len;
+
+  *context = cx;
+  return TURBINE_SUCCESS;
+}
+
+static turbine_exec_code
+coaster_start(void *context, void **state)
 {
   assert(context != NULL);
   coaster_context *cx = context;
@@ -197,14 +197,14 @@ coaster_initialize(void *context, void **state)
 }
 
 static turbine_exec_code
-coaster_shutdown(void *state)
+coaster_stop(void *state)
 {
   coaster_state *s = state;
   
   coaster_rc crc = coaster_client_stop(s->client);
   COASTER_CHECK(crc, TURBINE_EXEC_OTHER);
 
-  turbine_exec_code ec = coaster_shutdown_cleanup_active(s);
+  turbine_exec_code ec = coaster_cleanup_active(s);
   EXEC_CHECK(ec);
 
   free(s);
@@ -216,7 +216,7 @@ coaster_shutdown(void *state)
   Should be called after stopping coasters client and thread.
  */
 static turbine_exec_code
-coaster_shutdown_cleanup_active(coaster_state *state)
+coaster_cleanup_active(coaster_state *state)
 {
   coaster_rc crc;
 

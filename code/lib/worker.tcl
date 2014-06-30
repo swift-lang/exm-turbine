@@ -16,8 +16,6 @@
 # Code executed on worker processes
 
 namespace eval turbine {
-    # Import adlb commands
-    namespace import ::adlb::get
 
     # Main worker loop
     proc worker { rules startup_cmd } {
@@ -27,27 +25,30 @@ namespace eval turbine {
             # First rank should start execution
             eval $rules
         }
-        
-        # Alternative GEMTC worker is enabled by environment variable
-        # TURBINE_GEMTC_WORKER=1, or another non-zero value
-        # An empty string is treated as false, other values are invalid
-        global env
-        if { [ info exists env(TURBINE_GEMTC_WORKER) ] &&
-             $env(TURBINE_GEMTC_WORKER) != "" } {
-            set gemtc_setting $env(TURBINE_GEMTC_WORKER)
-            if { ! [ string is integer -strict $gemtc_setting ] } {
-              error "Invalid TURBINE_GEMTC_WORKER setting, must be int:\
-                     ${gemtc_setting}"
-            }
 
-            if { $gemtc_setting } {
-             gemtc_worker
-             return
-            }
+        if { [ gemtc_alt_worker ] } {
+          # Rank alternative gemtc worker
+          # TODO: replace with proper gemtc async worker
+          return
         }
-
+        
         global WORK_TYPE
 
         c::worker_loop $WORK_TYPE(WORK)
+    }
+
+    # Worker that executes tasks via async executor
+    proc async_exec_worker { work_type rules startup_cmd  } {
+
+        eval $startup_cmd
+        if { [ adlb::rank ] == 0 } {
+            # First rank should start execution
+            eval $rules
+        }
+        
+
+        global WORK_TYPE
+        
+        c::async_exec_worker_loop $work_type $WORK_TYPE($work_type)
     }
 }

@@ -32,8 +32,9 @@ namespace eval turbine {
 
     # Import executor commands
     namespace import ::turbine::c::noop_exec_* \
-                     ::turbine::c::coaster_*
-    namespace export noop_exec_* coaster_*
+                     ::turbine::c::coaster_* \
+                     ::turbine::c::async_exec_configure
+    namespace export noop_exec_* coaster_* async_exec_configure
 
     # Export work types accessible
     variable WORK_TASK
@@ -349,7 +350,7 @@ namespace eval turbine {
             WORK  { worker $rules $startup_cmd}
             default {
               # Must be named executor
-              c::async_exec_worker_loop $mode
+              async_exec_worker $mode $rules $startup_cmd
             }
         }
     }

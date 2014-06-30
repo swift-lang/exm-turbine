@@ -45,7 +45,8 @@ turbine::enable_read_refcount
 
 set noop_work_type [ turbine::adlb_work_type $turbine::NOOP_EXEC_NAME ]
 
-turbine::noop_exec_register $noop_work_type
+turbine::noop_exec_register
+turbine::async_exec_configure $turbine::NOOP_EXEC_NAME {}
 turbine::start main 
 turbine::finalize
 

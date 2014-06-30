@@ -70,20 +70,27 @@ Implications of Assumptions
 #define COMPLETED_BUFFER_SIZE 16
 
 
+/* Initialization of module */
 static bool executors_init = false;
+
+/* Lazy initialization of executors table - may register executor at
+   any time  */
+static bool executors_table_init = false;
 static struct table executors;
+
+static turbine_code init_exec_table(void);
 
 static turbine_exec_code
 get_tasks(Tcl_Interp *interp, turbine_executor *executor,
-          void *buffer, size_t buffer_size, bool poll, int max_tasks,
-          bool *got_tasks);
+          int adlb_work_type, void *buffer, size_t buffer_size,
+          bool poll, int max_tasks, bool *got_tasks);
 
 static turbine_exec_code
 check_tasks(Tcl_Interp *interp, turbine_executor *executor, bool poll,
             bool *task_completed);
 
 static void
-shutdown_executors(turbine_executor *executors, int nexecutors);
+stop_executors(turbine_executor *executors, int nexecutors);
 
 static void
 launch_error(Tcl_Interp* interp, turbine_executor *exec, int tcl_rc,
@@ -93,39 +100,36 @@ static void
 callback_error(Tcl_Interp* interp, turbine_executor *exec, int tcl_rc,
                Tcl_Obj *command);
 
-void init_coasters_executor(turbine_executor *exec /*TODO: coasters params */)
-{
-  exec->name = "Coasters";
-  exec->adlb_work_type = 2;
-  // TODO: could make use of background thread
-  exec->notif_mode = EXEC_POLLING;
-
-  exec->initialize = NULL; 
-  exec->shutdown = NULL; // TODO: shutdown
-  exec->poll = NULL;
-  exec->wait = NULL;
-  exec->slots = NULL;
-  
-  exec->context = NULL; // Any settings, etc 
-  exec->state = NULL; // TODO: pointer to coasters client
-}
-
 turbine_code
 turbine_async_exec_initialize(void)
 {
   turbine_condition(!executors_init, TURBINE_ERROR_INVALID,
                     "Executors already init");
-  bool ok = table_init(&executors, 16);
-  turbine_condition(ok, TURBINE_ERROR_OOM, "Error initializing table");
 
   executors_init = true;
   return TURBINE_EXEC_SUCCESS;
 }
 
+static turbine_code
+init_exec_table(void)
+{
+  assert(!executors_table_init);
+  bool ok = table_init(&executors, 16);
+  turbine_condition(ok, TURBINE_ERROR_OOM, "Error initializing table");
+  
+  executors_table_init = true;
+  return TURBINE_SUCCESS;
+}
+
+
 turbine_code
 turbine_add_async_exec(turbine_executor executor)
 {
-  assert(executors_init);
+  if (!executors_table_init)
+  {
+    turbine_code tc = init_exec_table();
+    turbine_check(tc);
+  }
   // TODO: ownership of pointers, etc
   // TODO: validate executor
   turbine_executor *exec_ptr = malloc(sizeof(executor));
@@ -137,10 +141,14 @@ turbine_add_async_exec(turbine_executor executor)
   return TURBINE_SUCCESS;
 }
 
-static turbine_executor *
-get_mutable_async_exec(const char *name)
+turbine_executor *
+turbine_get_async_exec(const char *name)
 {
-  assert(executors_init);
+  if (!executors_table_init)
+  {
+    return NULL;
+  }
+
   turbine_executor *executor;
   if (!table_search(&executors, name, (void**)&executor)) {
     printf("Could not find executor: \"%s\"\n", name);
@@ -149,15 +157,26 @@ get_mutable_async_exec(const char *name)
   return executor;
 }
 
-const turbine_executor *
-turbine_get_async_exec(const char *name)
+turbine_code
+turbine_configure_exec(turbine_executor *exec, const char *config,
+                       size_t config_len)
 {
-  return get_mutable_async_exec(name);
+  assert(exec != NULL);
+  turbine_exec_code ec;
+  
+  if (exec->configure != NULL)
+  {
+    ec = exec->configure(&exec->context, config, config_len);
+    TURBINE_EXEC_CHECK_MSG(ec, TURBINE_ERROR_EXTERNAL,
+                 "error configuring executor %s", exec->name);
+  }
+
+  return TURBINE_SUCCESS;
 }
 
 turbine_code
-turbine_async_worker_loop(Tcl_Interp *interp, const char *exec_name,
-                          void *buffer, size_t buffer_size)
+turbine_async_worker_loop(Tcl_Interp *interp, turbine_executor *exec,
+                int adlb_work_type, void *buffer, size_t buffer_size)
 {
   turbine_exec_code ec;
   turbine_code tc;
@@ -165,27 +184,23 @@ turbine_async_worker_loop(Tcl_Interp *interp, const char *exec_name,
   tc = turbine_service_init();
   turbine_check(tc);
 
-  assert(exec_name != NULL);
+  assert(exec != NULL);
   assert(buffer != NULL);
   assert(buffer_size > 0);
   // TODO: check buffer large enough for work units
 
-  turbine_executor *executor = get_mutable_async_exec(exec_name);
-  turbine_condition(executor != NULL, TURBINE_ERROR_INVALID,
-                    "Executor %s not registered", exec_name);
-
-  assert(executor->initialize != NULL);
-  ec = executor->initialize(executor->context, &executor->state);
+  assert(exec->start != NULL);
+  ec = exec->start(exec->context, &exec->state);
   TURBINE_EXEC_CHECK_MSG(ec, TURBINE_ERROR_EXTERNAL,
-               "error initializing executor %s", executor->name);
+               "error starting executor %s", exec->name);
 
   while (true)
   {
     turbine_exec_slot_state slots;
     bool something_happened = false;
-    ec = executor->slots(executor->state, &slots);
+    ec = exec->slots(exec->state, &slots);
     TURBINE_EXEC_CHECK_MSG(ec, TURBINE_ERROR_EXTERNAL,
-               "error getting executor slot count %s", executor->name);
+               "error getting executor slot count %s", exec->name);
 
     if (slots.used < slots.total)
     {
@@ -194,25 +209,25 @@ turbine_async_worker_loop(Tcl_Interp *interp, const char *exec_name,
       // Need to do non-blocking get if we're polling executor too
       bool poll = (slots.used != 0);
       
-      ec = get_tasks(interp, executor, buffer, buffer_size,
+      ec = get_tasks(interp, exec, adlb_work_type, buffer, buffer_size,
                      poll, max_tasks, &something_happened);
       if (ec == TURBINE_EXEC_SHUTDOWN)
       {
         break;
       }
       TURBINE_EXEC_CHECK_MSG(ec, TURBINE_ERROR_EXTERNAL,
-               "error getting tasks for executor %s", executor->name);
+               "error getting tasks for executor %s", exec->name);
     }
     // Update count in case work added 
-    ec = executor->slots(executor->state, &slots);
+    ec = exec->slots(exec->state, &slots);
     TURBINE_EXEC_CHECK_MSG(ec, TURBINE_ERROR_EXTERNAL,
-               "error getting executor slot count %s", executor->name);
+               "error getting executor slot count %s", exec->name);
 
     if (slots.used > 0)
     {
       // Need to do non-blocking check if we want to request more work
       bool poll = (slots.used < slots.total);
-      ec = check_tasks(interp, executor, poll, &something_happened);
+      ec = check_tasks(interp, exec, poll, &something_happened);
       TURBINE_EXEC_CHECK(ec, TURBINE_ERROR_EXTERNAL);
     }
 
@@ -224,7 +239,7 @@ turbine_async_worker_loop(Tcl_Interp *interp, const char *exec_name,
     }
   }
 
-  shutdown_executors(executor, 1);
+  stop_executors(exec, 1);
 
   return TURBINE_SUCCESS;
 }
@@ -236,8 +251,8 @@ turbine_async_worker_loop(Tcl_Interp *interp, const char *exec_name,
  */
 static turbine_exec_code
 get_tasks(Tcl_Interp *interp, turbine_executor *executor,
-          void *buffer, size_t buffer_size, bool poll, int max_tasks,
-          bool *got_tasks)
+          int adlb_work_type, void *buffer, size_t buffer_size,
+          bool poll, int max_tasks, bool *got_tasks)
 {
   adlb_code ac;
   int rc;
@@ -247,7 +262,7 @@ get_tasks(Tcl_Interp *interp, turbine_executor *executor,
   if (poll)
   {
     // TODO: move to ADLB_Amget() once ready
-    ac = ADLB_Iget(executor->adlb_work_type, buffer, &work_len,
+    ac = ADLB_Iget(adlb_work_type, buffer, &work_len,
                     &answer_rank, &type_recved);
     EXEC_ADLB_CHECK_MSG(ac, TURBINE_EXEC_OTHER,
                         "Error getting work from ADLB");
@@ -257,7 +272,7 @@ get_tasks(Tcl_Interp *interp, turbine_executor *executor,
   else
   {
     MPI_Comm tmp_comm;
-    ac = ADLB_Get(executor->adlb_work_type, buffer, &work_len,
+    ac = ADLB_Get(adlb_work_type, buffer, &work_len,
                     &answer_rank, &type_recved, &tmp_comm);
     if (ac == ADLB_SHUTDOWN)
     {
@@ -379,14 +394,18 @@ check_tasks(Tcl_Interp *interp, turbine_executor *executor, bool poll,
 
 
 static void
-shutdown_executors(turbine_executor *executors, int nexecutors)
+stop_executors(turbine_executor *executors, int nexecutors)
 {
   for (int i = 0; i < nexecutors; i++) {
     turbine_executor *exec = &executors[i];
-    turbine_exec_code ec = exec->shutdown(exec->state);
+    assert(exec->stop != NULL);
+
+    turbine_exec_code ec = exec->stop(exec->state);
     if (ec != TURBINE_EXEC_SUCCESS)
     {
-      // TODO: warn about error 
+      // Only warn about error
+      TURBINE_ERR_PRINTF("Error while shutting down %s executor\n",
+                         exec->name);
     }
   }
 }
@@ -404,12 +423,14 @@ static void exec_free_cb(const char *key, void *val)
 turbine_code
 turbine_async_exec_finalize(void)
 {
-  if (executors_init)
+  if (executors_table_init)
   {
     table_free_callback(&executors, false, exec_free_cb);
 
-    executors_init = false;
+    executors_table_init = false;
   }
+  
+  executors_init = false;
 
   return TURBINE_SUCCESS;
 }

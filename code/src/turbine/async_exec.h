@@ -52,15 +52,19 @@ turbine_code turbine_async_exec_initialize(void);
 turbine_code turbine_async_exec_finalize(void);
 
 /*
-  Lookup registered executor.
-  Returns executor, or NULL if not registered.
-  Pointer to executor remains valid until shut down
+  lookup registered executor.
+  returns executor, or null if not registered.
+  pointer to executor remains valid until shut down
  */
-const turbine_executor *
+turbine_executor *
 turbine_get_async_exec(const char *name);
 
 turbine_code
-turbine_async_worker_loop(Tcl_Interp *interp, const char *exec_name,
-                          void *buffer, size_t buffer_size);
+turbine_configure_exec(turbine_executor *exec, const char *config,
+                       size_t config_len);
+
+turbine_code
+turbine_async_worker_loop(Tcl_Interp *interp, turbine_executor *exec,
+                int adlb_work_type, void *buffer, size_t buffer_size);
 
 #endif //__ASYNC_EXEC_H
