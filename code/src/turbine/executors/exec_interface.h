@@ -84,7 +84,8 @@ typedef turbine_exec_code (*turbine_exec_start)(void *context,
 typedef turbine_exec_code (*turbine_exec_stop)(void *state);
 
 /*
-  Free: free memory for shut down executor
+  Free: free memory for stopped executor.  Executor may or may not
+        have been started or configured
  */
 typedef turbine_exec_code (*turbine_exec_free)(void *context);
 

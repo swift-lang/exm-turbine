@@ -1110,6 +1110,39 @@ Coaster_Register_Cmd(ClientData cdata, Tcl_Interp *interp,
   return TCL_OK;
 }
 
+/* usage: async_exec_names
+   Return list of names of registered async executors
+ */
+static int
+Async_Exec_Names_Cmd(ClientData cdata, Tcl_Interp* interp,
+                        int objc, Tcl_Obj* const objv[])
+{
+  TCL_ARGS(1);
+
+  turbine_code tc;
+
+  const int names_size = TURBINE_ASYNC_EXECUTOR_LIMIT;
+  const char *names[names_size];
+  int n;
+  tc = turbine_async_exec_names(names, names_size, &n);
+  TCL_CONDITION(tc == TURBINE_SUCCESS, "Error enumerating executors");
+
+  assert(n >= 0 && n <= names_size);
+
+  Tcl_Obj * name_objs[n];
+
+  for (int i = 0; i < n; i++)
+  {
+    const char *exec_name = names[i];
+    assert(exec_name != NULL);
+    
+    name_objs[i] = Tcl_NewStringObj(exec_name, -1);
+    TCL_CONDITION(name_objs[i] != NULL, "Error allocating string");
+  }
+  
+  Tcl_SetObjResult(interp, Tcl_NewListObj(n, name_objs));
+  return TCL_OK;
+}
 
 /* usage: async_exec_configure <executor name> <config string>
    Configure registered executor. 
@@ -1332,6 +1365,7 @@ Tclturbine_Init(Tcl_Interp* interp)
   COMMAND("debug",       Turbine_Debug_Cmd);
   COMMAND("check_str_int", Turbine_StrInt_Cmd);
 
+  COMMAND("async_exec_names", Async_Exec_Names_Cmd);
   COMMAND("async_exec_configure", Async_Exec_Configure_Cmd);
   COMMAND("async_exec_worker_loop", Async_Exec_Worker_Loop_Cmd);
 

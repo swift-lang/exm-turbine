@@ -25,6 +25,9 @@
 
 #include <tcl.h>
 
+// Limit on number of registered async executors
+#define TURBINE_ASYNC_EXECUTOR_LIMIT 64
+
 // Forward declare turbine executor
 typedef struct turbine_executor turbine_executor;
 
@@ -50,6 +53,17 @@ typedef struct {
 turbine_code turbine_async_exec_initialize(void);
 
 turbine_code turbine_async_exec_finalize(void);
+
+/*
+  Enumerate names of async executors.
+  names: caller array to fill in with name pointers.  Pointers remain
+        owned by this module, will be invalidated when finalized or
+        an executor is added or removed.
+  size: size of names array.  If >= TURBINE_ASYNC_EXECUTOR_LIMIT, will return all
+        names
+ */
+turbine_code
+turbine_async_exec_names(const char **names, int size, int *count);
 
 /*
   lookup registered executor.

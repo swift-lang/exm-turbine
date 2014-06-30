@@ -130,6 +130,12 @@ turbine_add_async_exec(turbine_executor executor)
     turbine_code tc = init_exec_table();
     turbine_check(tc);
   }
+
+  turbine_condition(executors.size < TURBINE_ASYNC_EXECUTOR_LIMIT,
+        TURBINE_ERROR_INVALID,
+        "Adding %s would exceed limit of %i async executors",
+        executor.name, TURBINE_ASYNC_EXECUTOR_LIMIT);
+
   // TODO: ownership of pointers, etc
   // TODO: validate executor
   turbine_executor *exec_ptr = malloc(sizeof(executor));
@@ -138,6 +144,29 @@ turbine_add_async_exec(turbine_executor executor)
 
   table_add(&executors, executor.name, exec_ptr);
 
+  return TURBINE_SUCCESS;
+}
+
+turbine_code
+turbine_async_exec_names(const char **names, int size, int *count)
+{
+  int n = 0;
+
+  if (!executors_table_init) {
+    *count = 0;
+    return TURBINE_SUCCESS;
+  }
+
+  TABLE_FOREACH(&executors, entry)
+  {
+    if (n == size) {
+      break;
+    }
+
+    names[n++] = entry->key;
+  }
+
+  *count = n;
   return TURBINE_SUCCESS;
 }
 

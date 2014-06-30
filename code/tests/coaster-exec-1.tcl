@@ -45,7 +45,6 @@ proc main {} {
   }
 }
 
-turbine::coaster_register
 set layout [ dict create servers 1 workers 2 workers_by_type \
                   [ dict create WORK 1 $turbine::COASTER_EXEC_NAME 1 ] ]
 turbine::init $layout Turbine
@@ -56,6 +55,7 @@ set coaster_work_type [ turbine::adlb_work_type $turbine::COASTER_EXEC_NAME ]
 set service_url $env(COASTER_SERVICE_URL)
 set settings $env(COASTER_SETTINGS)
 
+turbine::check_can_execute $turbine::COASTER_EXEC_NAME
 turbine::async_exec_configure $turbine::COASTER_EXEC_NAME $settings
 turbine::start main 
 turbine::finalize

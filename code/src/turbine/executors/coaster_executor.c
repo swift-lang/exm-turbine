@@ -258,12 +258,12 @@ coaster_cleanup_active(coaster_state *state)
 static turbine_exec_code
 coaster_free(void *context)
 {
-  assert(context != NULL);
   coaster_context *cx = context;
-  
-  coaster_settings_free(cx->settings);
-  free(cx->service_url);
-  free(cx);
+  if (cx != NULL) { 
+    coaster_settings_free(cx->settings);
+    free(cx->service_url);
+    free(cx);
+  }
   
   return TURBINE_EXEC_SUCCESS;
 }

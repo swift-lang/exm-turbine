@@ -33,8 +33,10 @@ namespace eval turbine {
     # Import executor commands
     namespace import ::turbine::c::noop_exec_* \
                      ::turbine::c::coaster_* \
-                     ::turbine::c::async_exec_configure
-    namespace export noop_exec_* coaster_* async_exec_configure
+                     ::turbine::c::async_exec_configure \
+                     ::turbine::c::async_exec_names
+    namespace export noop_exec_* coaster_* async_exec_configure \
+                     async_exec_names
 
     # Export work types accessible
     variable WORK_TASK
@@ -82,7 +84,10 @@ namespace eval turbine {
         } else {
             adlb::init_comm
         }
-        
+
+        # Ensure all executors are known to system before setting up ranks
+        register_all_executors
+
         if { $rank_config == {}} {
             # Use standard rank configuration mechanism
             set rank_allocation [ rank_allocation [ adlb::size ] ]
@@ -197,9 +202,15 @@ namespace eval turbine {
                              workers_by_type $n_workers_by_type ]
     }
 
-    # TODO: have executors register themselves
+    # Return names of all registered async executors
     proc available_executors {} {
-      return [ list $::turbine::NOOP_EXEC_NAME ]
+      return [ async_exec_names ]
+    }
+
+    # Register all async executors
+    proc register_all_executors {} {
+      noop_exec_register
+      coaster_register
     }
 
     # Basic rank allocation with only servers and regular workers
@@ -210,6 +221,7 @@ namespace eval turbine {
     }
 
     # Return list of work types in canonical order based on rank layout
+    # Also checks that all requested executors are assigned a work type
     proc work_types_from_allocation { rank_allocation } {
         set workers_by_type [ dict get $rank_allocation workers_by_type ]
 
@@ -312,6 +324,19 @@ namespace eval turbine {
           set last_x_worker [ expr {$curr_rank - 1} ]
           log [ cat "$work_type WORKERS: $n_x_workers" \
                 "RANKS: $first_x_worker - $last_x_worker" ]
+        }
+    }
+
+    # Check that all executors in list have assigned workers and throw
+    # error otherwise.  Run after turbine::init
+    proc check_can_execute { exec_names } {
+        variable n_workers_by_type
+        foreach exec_name $exec_names {
+            set n_workers [ dict get $n_workers_by_type $exec_name ]
+            
+            if { $n_workers == "" || $n_workers < 1 } {
+              error "Executor $exec_name has no assigned workers"
+            }
         }
     }
 
