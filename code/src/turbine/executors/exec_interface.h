@@ -122,7 +122,12 @@ typedef enum
   //EXEC_BG_THREAD, /* Executor has background thread */
 } async_exec_notif;
 
-typedef struct turbine_executor {
+/*
+  Structure with all information about registered executor.
+  Typedef'd to turbine_executor in async_exec.h.
+ */
+struct turbine_executor
+{
   const char *name;
   async_exec_notif notif_mode;
   void *context; // Context info
@@ -138,7 +143,7 @@ typedef struct turbine_executor {
   turbine_exec_wait wait;
   turbine_exec_poll poll;
   turbine_exec_slots slots;
-} turbine_executor;
+};
 
 /*
   Register executor with async executors module.
