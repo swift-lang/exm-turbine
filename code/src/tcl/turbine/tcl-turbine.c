@@ -1248,8 +1248,77 @@ Noop_Exec_Run_Cmd(ClientData cdata, Tcl_Interp *interp,
   return TCL_OK;
 }
 
+static int tcllist_to_strings(Tcl_Interp *interp, Tcl_Obj *const objv[],
+      Tcl_Obj *list, int *count, const char ***strs, size_t **str_lens)
+{
+  int rc;
+
+  Tcl_Obj **objs;
+  rc = Tcl_ListObjGetElements(interp, list, count, &objs);
+  TCL_CHECK(rc);
+
+  if (*count > 0)
+  {
+    *strs = malloc(sizeof((*strs)[0]) * (size_t)*count);
+    TCL_MALLOC_CHECK(*strs);
+    *str_lens = malloc(sizeof((*str_lens)[0]) * (size_t)*count);
+    TCL_MALLOC_CHECK(*str_lens);
+
+    for (int i = 0; i < *count; i++)
+    {
+      int tmp_len;
+      (*strs)[i] = Tcl_GetStringFromObj(objs[i], &tmp_len);
+      (*str_lens)[i] = (size_t)tmp_len;
+    }
+  }
+  else
+  {
+    *strs = NULL;
+    *str_lens = NULL;
+  }
+  return TCL_OK;
+}
+
+// TODO: how to select staging mode?
+#define TMP_STAGING_MODE COASTER_STAGE_IF_PRESENT
+
+static int parse_stages(Tcl_Interp *interp, Tcl_Obj *const objv[],
+      Tcl_Obj *list, coaster_staging_mode default_stage_mode,
+      int *count, coaster_stage_entry **stages)
+{
+  int rc;
+
+  Tcl_Obj **objs;
+  rc = Tcl_ListObjGetElements(interp, list, count, &objs);
+  TCL_CHECK(rc);
+
+  if (*count > 0)
+  {
+    *stages = malloc(sizeof((*stages)[0]) * (size_t)*count);
+    TCL_MALLOC_CHECK(*stages);
+
+    for (int i = 0; i < *count; i++)
+    {
+      coaster_stage_entry *e = &(*stages)[i];
+      int tmp_len;
+      e->src = Tcl_GetStringFromObj(objs[i], &tmp_len);
+      e->src_len = (size_t)tmp_len;
+      e->dst = e->src;
+      e->dst_len = e->src_len;
+      e->mode = default_stage_mode;
+    }
+  }
+  else
+  {
+    *stages = NULL;
+  }
+  return TCL_OK;
+}
+
+
 /*
-  turbine::coaster_run <executable> <argument list> 
+  turbine::coaster_run <executable> <argument list> <infiles>
+              <outfiles> <options dict>
               <success callback> <failure callback>
   TODO: additional parameters
  */
@@ -1257,7 +1326,7 @@ static int
 Coaster_Run_Cmd(ClientData cdata, Tcl_Interp *interp,
                   int objc, Tcl_Obj *const objv[])
 {
-  TCL_CONDITION(objc == 5, "Wrong # args");
+  TCL_CONDITION(objc == 8, "Wrong # args: %i", objc - 1);
   turbine_code tc;
   int rc;
  
@@ -1269,33 +1338,28 @@ Coaster_Run_Cmd(ClientData cdata, Tcl_Interp *interp,
   int executable_len;
   executable = Tcl_GetStringFromObj(objv[1], &executable_len);
 
-  // TODO: list arguments
-  int argc;
-  Tcl_Obj **arg_objs;
-  rc = Tcl_ListObjGetElements(interp, objv[2], &argc, &arg_objs);
+  int argc, stageinc, stageoutc;
+  const char **argv;
+  size_t *arg_lens;
+  coaster_stage_entry *stageins, *stageouts;
+ 
+  rc = tcllist_to_strings(interp, objv, objv[2], &argc, &argv, &arg_lens);
+  TCL_CHECK(rc);
+  
+  rc = parse_stages(interp, objv, objv[3], TMP_STAGING_MODE,
+                    &stageinc, &stageins);
+  TCL_CHECK(rc);
+  
+  rc = parse_stages(interp, objv, objv[4], TMP_STAGING_MODE,
+                    &stageoutc, &stageouts);
   TCL_CHECK(rc);
 
-  const char **argv = NULL;
-  size_t *arg_lens = NULL;
-  
-  if (argc > 0)
-  {
-    argv = malloc(sizeof(argv[0]) * (size_t)argc);
-    TCL_MALLOC_CHECK(argv);
-    arg_lens = malloc(sizeof(arg_lens[0]) * (size_t)argc);
-    TCL_MALLOC_CHECK(arg_lens);
-
-    for (int i = 0; i < argc; i++)
-    {
-      int tmp_len;
-      argv[i] = Tcl_GetStringFromObj(arg_objs[i], &tmp_len);
-      arg_lens[i] = (size_t)tmp_len;
-    }
-  }
+  Tcl_Obj *opt_dict = objv[5];
+  // TODO: iterate over dictionary
 
   turbine_task_callbacks callbacks;
-  callbacks.success.code = objv[3];
-  callbacks.failure.code = objv[4];
+  callbacks.success.code = objv[6];
+  callbacks.failure.code = objv[7];
 
   coaster_job *job;
   coaster_rc crc;
@@ -1306,19 +1370,28 @@ Coaster_Run_Cmd(ClientData cdata, Tcl_Interp *interp,
 
   crc = coaster_job_create(executable, (size_t)executable_len, argc,
                 argv, arg_lens, job_manager, job_manager_len, &job);
-
-  if (argv != NULL)
-  {
-    free(argv);
-  }
-  
-  if (arg_lens != NULL)
-  {
-    free(arg_lens);
-  }
   TCL_CONDITION(crc == COASTER_SUCCESS, "Error constructing coaster job: "
                 "%s", coaster_last_err_info())
 
+  if (stageinc > 0 || stageoutc > 0)
+  {
+    crc = coaster_job_add_stages(job, stageinc, stageins,
+                                stageoutc, stageouts);
+    TCL_CONDITION(crc == COASTER_SUCCESS, "Error adding coaster stages: "
+                "%s", coaster_last_err_info())
+  }
+
+  // Cleanup memory before execution
+  void *alloced[] = {argv, arg_lens, stageins, stageouts};
+  int alloced_count = (int)(sizeof(alloced) / sizeof(alloced[0]));
+
+  for (int i = 0; i < alloced_count; i++)
+  {
+    if (alloced[i] != NULL)
+    {
+      free(alloced[i]);
+    }
+  }
 
   tc = coaster_execute(interp, coaster_exec, job, callbacks);
   TCL_CONDITION(tc == TURBINE_SUCCESS, "Error executing coaster task");
