@@ -117,6 +117,14 @@ static void set_namespace_constants(Tcl_Interp* interp);
 
 static int log_setup(int rank);
 
+static int tcllist_to_strings(Tcl_Interp *interp, Tcl_Obj *const objv[],
+      Tcl_Obj *list, int *count, const char ***strs, size_t **str_lens);
+static int parse_coaster_stages(Tcl_Interp *interp, Tcl_Obj *const objv[],
+      Tcl_Obj *list, coaster_staging_mode default_stage_mode,
+      int *count, coaster_stage_entry **stages);
+static int parse_coaster_opts(Tcl_Interp *interp, Tcl_Obj *const objv[],
+      Tcl_Obj *dict);
+
 static int
 Turbine_Init_Cmd(ClientData cdata, Tcl_Interp *interp,
                  int objc, Tcl_Obj *const objv[])
@@ -1248,73 +1256,8 @@ Noop_Exec_Run_Cmd(ClientData cdata, Tcl_Interp *interp,
   return TCL_OK;
 }
 
-static int tcllist_to_strings(Tcl_Interp *interp, Tcl_Obj *const objv[],
-      Tcl_Obj *list, int *count, const char ***strs, size_t **str_lens)
-{
-  int rc;
-
-  Tcl_Obj **objs;
-  rc = Tcl_ListObjGetElements(interp, list, count, &objs);
-  TCL_CHECK(rc);
-
-  if (*count > 0)
-  {
-    *strs = malloc(sizeof((*strs)[0]) * (size_t)*count);
-    TCL_MALLOC_CHECK(*strs);
-    *str_lens = malloc(sizeof((*str_lens)[0]) * (size_t)*count);
-    TCL_MALLOC_CHECK(*str_lens);
-
-    for (int i = 0; i < *count; i++)
-    {
-      int tmp_len;
-      (*strs)[i] = Tcl_GetStringFromObj(objs[i], &tmp_len);
-      (*str_lens)[i] = (size_t)tmp_len;
-    }
-  }
-  else
-  {
-    *strs = NULL;
-    *str_lens = NULL;
-  }
-  return TCL_OK;
-}
-
 // TODO: how to select staging mode?
 #define TMP_STAGING_MODE COASTER_STAGE_IF_PRESENT
-
-static int parse_stages(Tcl_Interp *interp, Tcl_Obj *const objv[],
-      Tcl_Obj *list, coaster_staging_mode default_stage_mode,
-      int *count, coaster_stage_entry **stages)
-{
-  int rc;
-
-  Tcl_Obj **objs;
-  rc = Tcl_ListObjGetElements(interp, list, count, &objs);
-  TCL_CHECK(rc);
-
-  if (*count > 0)
-  {
-    *stages = malloc(sizeof((*stages)[0]) * (size_t)*count);
-    TCL_MALLOC_CHECK(*stages);
-
-    for (int i = 0; i < *count; i++)
-    {
-      coaster_stage_entry *e = &(*stages)[i];
-      int tmp_len;
-      e->src = Tcl_GetStringFromObj(objs[i], &tmp_len);
-      e->src_len = (size_t)tmp_len;
-      e->dst = e->src;
-      e->dst_len = e->src_len;
-      e->mode = default_stage_mode;
-    }
-  }
-  else
-  {
-    *stages = NULL;
-  }
-  return TCL_OK;
-}
-
 
 /*
   turbine::coaster_run <executable> <argument list> <infiles>
@@ -1346,16 +1289,16 @@ Coaster_Run_Cmd(ClientData cdata, Tcl_Interp *interp,
   rc = tcllist_to_strings(interp, objv, objv[2], &argc, &argv, &arg_lens);
   TCL_CHECK(rc);
   
-  rc = parse_stages(interp, objv, objv[3], TMP_STAGING_MODE,
+  rc = parse_coaster_stages(interp, objv, objv[3], TMP_STAGING_MODE,
                     &stageinc, &stageins);
   TCL_CHECK(rc);
   
-  rc = parse_stages(interp, objv, objv[4], TMP_STAGING_MODE,
+  rc = parse_coaster_stages(interp, objv, objv[4], TMP_STAGING_MODE,
                     &stageoutc, &stageouts);
   TCL_CHECK(rc);
 
-  Tcl_Obj *opt_dict = objv[5];
-  // TODO: iterate over dictionary
+  rc = parse_coaster_opts(interp, objv, objv[5]);
+  TCL_CHECK(rc);
 
   turbine_task_callbacks callbacks;
   callbacks.success.code = objv[6];
@@ -1398,6 +1341,96 @@ Coaster_Run_Cmd(ClientData cdata, Tcl_Interp *interp,
   
   return TCL_OK;
 }
+
+static int tcllist_to_strings(Tcl_Interp *interp, Tcl_Obj *const objv[],
+      Tcl_Obj *list, int *count, const char ***strs, size_t **str_lens)
+{
+  int rc;
+
+  Tcl_Obj **objs;
+  rc = Tcl_ListObjGetElements(interp, list, count, &objs);
+  TCL_CHECK(rc);
+
+  if (*count > 0)
+  {
+    *strs = malloc(sizeof((*strs)[0]) * (size_t)*count);
+    TCL_MALLOC_CHECK(*strs);
+    *str_lens = malloc(sizeof((*str_lens)[0]) * (size_t)*count);
+    TCL_MALLOC_CHECK(*str_lens);
+
+    for (int i = 0; i < *count; i++)
+    {
+      int tmp_len;
+      (*strs)[i] = Tcl_GetStringFromObj(objs[i], &tmp_len);
+      (*str_lens)[i] = (size_t)tmp_len;
+    }
+  }
+  else
+  {
+    *strs = NULL;
+    *str_lens = NULL;
+  }
+  return TCL_OK;
+}
+
+static int parse_coaster_stages(Tcl_Interp *interp, Tcl_Obj *const objv[],
+      Tcl_Obj *list, coaster_staging_mode default_stage_mode,
+      int *count, coaster_stage_entry **stages)
+{
+  int rc;
+
+  Tcl_Obj **objs;
+  rc = Tcl_ListObjGetElements(interp, list, count, &objs);
+  TCL_CHECK(rc);
+
+  if (*count > 0)
+  {
+    *stages = malloc(sizeof((*stages)[0]) * (size_t)*count);
+    TCL_MALLOC_CHECK(*stages);
+
+    for (int i = 0; i < *count; i++)
+    {
+      coaster_stage_entry *e = &(*stages)[i];
+      int tmp_len;
+      e->src = Tcl_GetStringFromObj(objs[i], &tmp_len);
+      e->src_len = (size_t)tmp_len;
+      e->dst = e->src;
+      e->dst_len = e->src_len;
+      e->mode = default_stage_mode;
+    }
+  }
+  else
+  {
+    *stages = NULL;
+  }
+  return TCL_OK;
+}
+
+static int parse_coaster_opts(Tcl_Interp *interp, Tcl_Obj *const objv[],
+      Tcl_Obj *dict)
+{
+  int rc;
+
+  Tcl_DictSearch search;
+  Tcl_Obj *key, *value;
+  int done;
+
+  rc = Tcl_DictObjFirst(interp, dict, &search, &key, &value, &done);
+  TCL_CHECK(rc);
+
+  for (; !done ; Tcl_DictObjNext(&search, &key, &value, &done)) {
+    const char *key_s;
+    int key_len;
+    key_s = Tcl_GetStringFromObj(key, &key_len);
+    
+    // TODO: check keys
+
+    TCL_CONDITION(false, "Unknown coasters key: %.*s", key_len, key_s);
+  }
+  Tcl_DictObjDone(&search);
+  return TCL_OK;
+}
+
 
 /**
    Called when Tcl loads this extension
