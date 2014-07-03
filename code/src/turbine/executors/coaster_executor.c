@@ -151,10 +151,12 @@ coaster_configure(void **context, const char *config,
   coaster_rc crc = coaster_settings_create(&cx->settings);
   COASTER_CHECK(crc, TURBINE_EXEC_OOM);
  
-  // TODO: reenable when implemented
-  //crc = coaster_settings_parse(cx->settings, settings_str,
-  //                             settings_str_len);
-  //COASTER_CHECK(crc, TURBINE_EXEC_OOM);
+  crc = coaster_settings_parse(cx->settings, config, config_len, ',');
+  // Better reporting for config errors
+  turbine_condition(crc != COASTER_ERROR_INVALID, TURBINE_ERROR_INVALID,
+      "Error parsing settings string: \"%.*s\"\n%s",
+      (int)config_len, config, coaster_last_err_info());
+  COASTER_CHECK(crc, TURBINE_EXEC_OOM);
  
   const char *service_url = getenv(COASTER_ENV_URL);
 
