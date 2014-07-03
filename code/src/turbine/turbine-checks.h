@@ -49,7 +49,7 @@
   { if (! (condition))                                      \
     {                                                       \
        TURBINE_ERR_PRINTF("CONDITION FAILED: %s:%i\n", __FILE__, __LINE__);   \
-       TURBINE_ERR_PRINTF(format, ## args);                             \
+       TURBINE_ERR_PRINTF(format "\n", ## args);                             \
        return code;                                         \
     }}
 
