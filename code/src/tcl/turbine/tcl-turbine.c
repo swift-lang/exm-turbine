@@ -123,7 +123,9 @@ static int parse_coaster_stages(Tcl_Interp *interp, Tcl_Obj *const objv[],
       Tcl_Obj *list, coaster_staging_mode default_stage_mode,
       int *count, coaster_stage_entry **stages);
 static int parse_coaster_opts(Tcl_Interp *interp, Tcl_Obj *const objv[],
-      Tcl_Obj *dict);
+      Tcl_Obj *dict, const char **stdin_s, size_t *stdin_slen,
+      const char **stdout_s, size_t *stdout_slen, 
+      const char **stderr_s, size_t *stderr_slen);
 
 static int
 Turbine_Init_Cmd(ClientData cdata, Tcl_Interp *interp,
@@ -1297,7 +1299,11 @@ Coaster_Run_Cmd(ClientData cdata, Tcl_Interp *interp,
                     &stageoutc, &stageouts);
   TCL_CHECK(rc);
 
-  rc = parse_coaster_opts(interp, objv, objv[5]);
+  const char *stdin_s = NULL, *stdout_s = NULL, *stderr_s = NULL;
+  size_t stdin_slen = 0, stdout_slen = 0, stderr_slen = 0;
+
+  rc = parse_coaster_opts(interp, objv, objv[5], &stdin_s, &stdin_slen,
+            &stdout_s, &stdout_slen, &stderr_s, &stderr_slen);
   TCL_CHECK(rc);
 
   turbine_task_callbacks callbacks;
@@ -1322,6 +1328,15 @@ Coaster_Run_Cmd(ClientData cdata, Tcl_Interp *interp,
                                 stageoutc, stageouts);
     TCL_CONDITION(crc == COASTER_SUCCESS, "Error adding coaster stages: "
                 "%s", coaster_last_err_info())
+  }
+
+  if (stdin_s != NULL || stdout_s != NULL || stderr_s != NULL)
+  {
+    crc = coaster_job_set_redirects(job, stdin_s, stdin_slen,
+                stdout_s, stdout_slen, stderr_s, stderr_slen);
+    TCL_CONDITION(crc == COASTER_SUCCESS, "Error adding coaster stages: "
+                "%s", coaster_last_err_info())
+
   }
 
   // Cleanup memory before execution
@@ -1406,8 +1421,14 @@ static int parse_coaster_stages(Tcl_Interp *interp, Tcl_Obj *const objv[],
   return TCL_OK;
 }
 
+/*
+  Parse options dictionary.  Modifies arguments if keys found,
+  otherwise leaves them unmodified
+ */
 static int parse_coaster_opts(Tcl_Interp *interp, Tcl_Obj *const objv[],
-      Tcl_Obj *dict)
+      Tcl_Obj *dict, const char **stdin_s, size_t *stdin_slen,
+      const char **stdout_s, size_t *stdout_slen, 
+      const char **stderr_s, size_t *stderr_slen)
 {
   int rc;
 
@@ -1421,9 +1442,31 @@ static int parse_coaster_opts(Tcl_Interp *interp, Tcl_Obj *const objv[],
   for (; !done ; Tcl_DictObjNext(&search, &key, &value, &done)) {
     const char *key_s;
     int key_len;
+    int tmp_len;
+
     key_s = Tcl_GetStringFromObj(key, &key_len);
     
-    // TODO: check keys
+    if (key_len == 5 && memcmp(key_s, "stdin", 5) == 0)
+    {
+      *stdin_s = Tcl_GetStringFromObj(value, &tmp_len);
+      *stdin_slen = (size_t)tmp_len;
+      continue;
+    }
+    if (key_len == 6)
+    {
+      if (memcmp(key_s, "stdout", 6) == 0)
+      {
+        *stdout_s = Tcl_GetStringFromObj(value, &tmp_len);
+        *stdout_slen = (size_t)tmp_len;
+        continue;
+      }
+      else if (memcmp(key_s, "stderr", 6) == 0)
+      {
+        *stderr_s = Tcl_GetStringFromObj(value, &tmp_len);
+        *stderr_slen = (size_t)tmp_len;
+        continue;
+      }
+    }
 
     TCL_CONDITION(false, "Unknown coasters key: %.*s", key_len, key_s);
   }
