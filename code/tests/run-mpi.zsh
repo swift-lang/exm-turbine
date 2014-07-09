@@ -8,9 +8,11 @@ shift;
 PROCS=${PROCS:-3}
 
 pwd
-which mpiexec
-
+echo "${TURBINE_LAUNCHER}"
 set -x
 source scripts/turbine-config.sh
 
-mpiexec -l -n ${PROCS} ${VALGRIND} ${BIN} "$@"
+FLAGS="${TURBINE_LINE_OUTPUT_FLAG}"
+
+
+${TURBINE_LAUNCHER} ${FLAGS} -n ${PROCS} ${VALGRIND} ${BIN} "$@"
