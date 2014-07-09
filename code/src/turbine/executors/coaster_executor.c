@@ -64,6 +64,9 @@ typedef struct coaster_state {
   // Actual Coasters client
   coaster_client *client;
 
+  // Config ID for server
+  coaster_config_id *config;
+
   // Information about slots available
   turbine_exec_slot_state slots;
 
@@ -101,7 +104,7 @@ static turbine_exec_code
 check_completed(coaster_state *state, turbine_completed_task *completed,
                int *ncompleted, bool wait_for_completion);
 
-static turbine_exec_code 
+static turbine_exec_code
 init_coaster_executor(turbine_executor *exec)
 {
   exec->name = COASTER_EXECUTOR_NAME;
@@ -144,20 +147,20 @@ coaster_configure(void **context, const char *config,
 {
   coaster_context *cx = malloc(sizeof(coaster_context));
   EXEC_MALLOC_CHECK(cx);
-  
+
   // TODO: load config, etc
   cx->total_slots = 4;
-  
+
   coaster_rc crc = coaster_settings_create(&cx->settings);
   COASTER_CHECK(crc, TURBINE_EXEC_OOM);
- 
+
   crc = coaster_settings_parse(cx->settings, config, config_len, ',');
   // Better reporting for config errors
   turbine_condition(crc != COASTER_ERROR_INVALID, TURBINE_ERROR_INVALID,
       "Error parsing settings string: \"%.*s\"\n%s",
       (int)config_len, config, coaster_last_err_info());
   COASTER_CHECK(crc, TURBINE_EXEC_OOM);
- 
+
   const char *service_url = getenv(COASTER_ENV_URL);
 
   if (service_url == NULL)
@@ -180,7 +183,7 @@ coaster_start(void *context, void **state)
 {
   assert(context != NULL);
   coaster_context *cx = context;
-  coaster_state *s = malloc(sizeof(coaster_state)); 
+  coaster_state *s = malloc(sizeof(coaster_state));
   EXEC_MALLOC_CHECK(s);
 
   s->context = cx;
@@ -189,9 +192,13 @@ coaster_start(void *context, void **state)
   s->slots.total = cx->total_slots;
 
   table_lp_init(&s->active_tasks, ACTIVE_TASKS_INIT_CAPACITY);
-  
+
   coaster_rc crc = coaster_client_start(cx->service_url,
                         cx->service_url_len, &s->client);
+  COASTER_CHECK(crc, TURBINE_EXEC_OTHER);
+
+  // Setup service config
+  crc = coaster_apply_settings(s->client, cx->settings, &s->config);
   COASTER_CHECK(crc, TURBINE_EXEC_OTHER);
 
   *state = s;
@@ -202,8 +209,11 @@ static turbine_exec_code
 coaster_stop(void *state)
 {
   coaster_state *s = state;
-  
+
   coaster_rc crc = coaster_client_stop(s->client);
+  COASTER_CHECK(crc, TURBINE_EXEC_OTHER);
+
+  crc = coaster_config_id_free(s->config);
   COASTER_CHECK(crc, TURBINE_EXEC_OTHER);
 
   turbine_exec_code ec = coaster_cleanup_active(s);
@@ -253,7 +263,7 @@ coaster_cleanup_active(coaster_state *state)
   }
 
   // Free table memory
-  table_lp_free_callback(&state->active_tasks, false, NULL); 
+  table_lp_free_callback(&state->active_tasks, false, NULL);
   return TURBINE_EXEC_SUCCESS;
 }
 
@@ -261,12 +271,12 @@ static turbine_exec_code
 coaster_free(void *context)
 {
   coaster_context *cx = context;
-  if (cx != NULL) { 
+  if (cx != NULL) {
     coaster_settings_free(cx->settings);
     free(cx->service_url);
     free(cx);
   }
-  
+
   return TURBINE_EXEC_SUCCESS;
 }
 
@@ -284,7 +294,7 @@ coaster_execute(Tcl_Interp *interp, const turbine_executor *exec,
   assert(s->slots.used < s->slots.total);
   s->slots.used++;
 
-  crc = coaster_submit(s->client, job);
+  crc = coaster_submit(s->client, s->config, job);
   COASTER_CHECK(crc, TURBINE_ERROR_EXTERNAL);
 
   DEBUG_TURBINE("COASTER: Launched task: %.*s\n", length,
@@ -306,12 +316,12 @@ coaster_execute(Tcl_Interp *interp, const turbine_executor *exec,
   {
     Tcl_IncrRefCount(callbacks.success.code);
   }
-  
+
   if (callbacks.failure.code != NULL)
   {
     Tcl_IncrRefCount(callbacks.failure.code);
   }
-  
+
   return TURBINE_SUCCESS;
 }
 
@@ -328,12 +338,12 @@ check_completed(coaster_state *state, turbine_completed_task *completed,
   {
     const int tmp_jobs_size = 32;
     coaster_job *tmp_jobs[tmp_jobs_size];
-    
+
     int maxleft = completed_size - job_count;
     int maxjobs = (maxleft < tmp_jobs_size) ? maxleft : tmp_jobs_size;
 
     int njobs;
-    crc = coaster_check_jobs(state->client, wait_for_completion, 
+    crc = coaster_check_jobs(state->client, wait_for_completion,
                              maxjobs, tmp_jobs, &njobs);
     COASTER_CHECK(crc, TURBINE_EXEC_OTHER);
 
@@ -352,11 +362,11 @@ check_completed(coaster_state *state, turbine_completed_task *completed,
       table_lp_remove(&state->active_tasks, job_id, (void**)&task);
       EXEC_CONDITION(task != NULL, TURBINE_EXEC_OTHER,
                     "No matching entry for job id %"PRId64, job_id);
-      
+
       coaster_job_status status;
       crc = coaster_job_status_code(job, &status);
       COASTER_CHECK(crc, TURBINE_EXEC_OTHER);
-      
+
       // TODO: some way to get back info about cause of failure?
       // TODO: some way to pass job info to callback
       completed[job_count].success = (status == COASTER_STATUS_COMPLETED);
