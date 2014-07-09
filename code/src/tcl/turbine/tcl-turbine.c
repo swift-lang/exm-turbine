@@ -56,8 +56,10 @@
 #include "src/turbine/async_exec.h"
 #include "src/turbine/executors/noop_executor.h"
 
+#if HAVE_COASTER == 1
 #include <coasters.h>
 #include "src/turbine/executors/coaster_executor.h"
+#endif
 
 #include "src/tcl/util.h"
 #include "src/tcl/turbine/tcl-turbine.h"
@@ -119,6 +121,8 @@ static int log_setup(int rank);
 
 static int tcllist_to_strings(Tcl_Interp *interp, Tcl_Obj *const objv[],
       Tcl_Obj *list, int *count, const char ***strs, size_t **str_lens);
+
+#if HAVE_COASTER == 1
 static int parse_coaster_stages(Tcl_Interp *interp, Tcl_Obj *const objv[],
       Tcl_Obj *list, coaster_staging_mode default_stage_mode,
       int *count, coaster_stage_entry **stages);
@@ -126,6 +130,8 @@ static int parse_coaster_opts(Tcl_Interp *interp, Tcl_Obj *const objv[],
       Tcl_Obj *dict, const char **stdin_s, size_t *stdin_slen,
       const char **stdout_s, size_t *stdout_slen, 
       const char **stderr_s, size_t *stderr_slen);
+#endif
+
 
 static int
 Turbine_Init_Cmd(ClientData cdata, Tcl_Interp *interp,
@@ -205,8 +211,10 @@ set_namespace_constants(Tcl_Interp* interp)
   tcl_set_string(interp, "::turbine::NOOP_EXEC_NAME",
                  NOOP_EXECUTOR_NAME);
   
+#if HAVE_COASTER == 1
   tcl_set_string(interp, "::turbine::COASTER_EXEC_NAME",
                  COASTER_EXECUTOR_NAME);
+#endif
 }
 
 static int
@@ -1090,6 +1098,8 @@ Noop_Exec_Register_Cmd(ClientData cdata, Tcl_Interp *interp,
 
 /*
   turbine::coaster_register
+
+  Register coaster executor if enabled
  */
 static int
 Coaster_Register_Cmd(ClientData cdata, Tcl_Interp *interp,
@@ -1097,6 +1107,7 @@ Coaster_Register_Cmd(ClientData cdata, Tcl_Interp *interp,
 {
   TCL_ARGS(1);
   
+#if HAVE_COASTER == 1
   turbine_code tc;
   tc = coaster_executor_register();
   TCL_CONDITION(tc == TURBINE_SUCCESS,
@@ -1116,7 +1127,7 @@ Coaster_Register_Cmd(ClientData cdata, Tcl_Interp *interp,
 
   coaster_rc crc = coaster_set_log_threshold(threshold);
   TCL_CONDITION(crc == COASTER_SUCCESS, "Could not set log threshold");
-
+#endif
   return TCL_OK;
 }
 
@@ -1271,6 +1282,10 @@ static int
 Coaster_Run_Cmd(ClientData cdata, Tcl_Interp *interp,
                   int objc, Tcl_Obj *const objv[])
 {
+#if HAVE_COASTER == 0
+  TCL_CONDITION(false, "Coaster extension not enabled");
+  return TCL_ERROR;
+#else
   TCL_CONDITION(objc == 8, "Wrong # args: %i", objc - 1);
   turbine_code tc;
   int rc;
@@ -1355,6 +1370,7 @@ Coaster_Run_Cmd(ClientData cdata, Tcl_Interp *interp,
   TCL_CONDITION(tc == TURBINE_SUCCESS, "Error executing coaster task");
   
   return TCL_OK;
+#endif
 }
 
 static int tcllist_to_strings(Tcl_Interp *interp, Tcl_Obj *const objv[],
@@ -1388,6 +1404,7 @@ static int tcllist_to_strings(Tcl_Interp *interp, Tcl_Obj *const objv[],
   return TCL_OK;
 }
 
+#if HAVE_COASTER == 1
 static int parse_coaster_stages(Tcl_Interp *interp, Tcl_Obj *const objv[],
       Tcl_Obj *list, coaster_staging_mode default_stage_mode,
       int *count, coaster_stage_entry **stages)
@@ -1473,7 +1490,7 @@ static int parse_coaster_opts(Tcl_Interp *interp, Tcl_Obj *const objv[],
   Tcl_DictObjDone(&search);
   return TCL_OK;
 }
-
+#endif
 
 /**
    Called when Tcl loads this extension
