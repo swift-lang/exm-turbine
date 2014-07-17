@@ -129,7 +129,7 @@ static int parse_coaster_stages(Tcl_Interp *interp, Tcl_Obj *const objv[],
       int *count, coaster_stage_entry **stages);
 static int parse_coaster_opts(Tcl_Interp *interp, Tcl_Obj *const objv[],
       Tcl_Obj *dict, const char **stdin_s, size_t *stdin_slen,
-      const char **stdout_s, size_t *stdout_slen, 
+      const char **stdout_s, size_t *stdout_slen,
       const char **stderr_s, size_t *stderr_slen);
 #endif
 
@@ -211,7 +211,7 @@ set_namespace_constants(Tcl_Interp* interp)
 
   tcl_set_string(interp, "::turbine::NOOP_EXEC_NAME",
                  NOOP_EXECUTOR_NAME);
-  
+
 #if HAVE_COASTER == 1
   tcl_set_string(interp, "::turbine::COASTER_EXEC_NAME",
                  COASTER_EXECUTOR_NAME);
@@ -1093,7 +1093,7 @@ Noop_Exec_Register_Cmd(ClientData cdata, Tcl_Interp *interp,
   tc = noop_executor_register();
   TCL_CONDITION(tc == TURBINE_SUCCESS,
                 "Could not register noop executor");
-  
+
   return TCL_OK;
 }
 
@@ -1107,7 +1107,7 @@ Coaster_Register_Cmd(ClientData cdata, Tcl_Interp *interp,
                   int objc, Tcl_Obj *const objv[])
 {
   TCL_ARGS(1);
-  
+
 #if HAVE_COASTER == 1
   turbine_code tc;
   tc = coaster_executor_register();
@@ -1115,13 +1115,13 @@ Coaster_Register_Cmd(ClientData cdata, Tcl_Interp *interp,
                 "Could not register Coaster executor");
 
   coaster_log_level threshold = COASTER_LOG_WARN;
-  
+
   // Turn on debugging based on debug tokens.
   if (turbine_debug_enabled) {
 #ifdef ENABLE_DEBUG_COASTER
     // Only enable detailed debugging if coaster debugging on
     threshold = COASTER_LOG_DEBUG;
-#else 
+#else
     threshold = COASTER_LOG_INFO;
 #endif
   }
@@ -1157,17 +1157,17 @@ Async_Exec_Names_Cmd(ClientData cdata, Tcl_Interp* interp,
   {
     const char *exec_name = names[i];
     assert(exec_name != NULL);
-    
+
     name_objs[i] = Tcl_NewStringObj(exec_name, -1);
     TCL_CONDITION(name_objs[i] != NULL, "Error allocating string");
   }
-  
+
   Tcl_SetObjResult(interp, Tcl_NewListObj(n, name_objs));
   return TCL_OK;
 }
 
 /* usage: async_exec_configure <executor name> <config string>
-   Configure registered executor. 
+   Configure registered executor.
  */
 static int
 Async_Exec_Configure_Cmd(ClientData cdata, Tcl_Interp* interp,
@@ -1183,7 +1183,7 @@ Async_Exec_Configure_Cmd(ClientData cdata, Tcl_Interp* interp,
 
   turbine_executor *exec = turbine_get_async_exec(exec_name, NULL);
   TCL_CONDITION(exec != NULL, "Executor %s not registered", exec_name);
-  
+
   tc = turbine_configure_exec(exec, config, (size_t)config_len);
   TCL_CONDITION(tc == TURBINE_SUCCESS,
       "Could not configure executor %s", exec_name);
@@ -1203,33 +1203,44 @@ Async_Exec_Worker_Loop_Cmd(ClientData cdata, Tcl_Interp *interp,
   int rc;
   turbine_code tc;
 
-  // Maintain separate buffer from xfer, since xfer may be
-  // used in code that we call.
-  size_t buffer_size = ADLB_DATA_MAX;
-  void* buffer = malloc(buffer_size);
-  TCL_CONDITION(buffer != NULL, "Out of memory");
-
   const char *exec_name = Tcl_GetString(objv[1]);
-  
+
   turbine_executor *exec = turbine_get_async_exec(exec_name, NULL);
   TCL_CONDITION(exec != NULL, "Executor %s not registered", exec_name);
-  
+
   int adlb_work_type;
   rc = Tcl_GetIntFromObj(interp, objv[2], &adlb_work_type);
   TCL_CHECK(rc);
 
-  // TODO: multiple buffers
-  adlb_payload_buf buf = { .payload = buffer, .size = (int)buffer_size };
+  // TODO: make configurable?
+  const int ASYNC_EXEC_BUFFERS = 4;
+  adlb_payload_buf bufs[ASYNC_EXEC_BUFFERS];
 
-  tc = turbine_async_worker_loop(interp, exec, adlb_work_type, &buf, 1);
-  free(buffer);
-  
+  for (int i = 0; i < ASYNC_EXEC_BUFFERS; i++)
+  {
+
+    // Maintain separate buffers from xfer, since xfer may be
+    // used in code that we call.
+
+    bufs[i].payload = malloc(ADLB_DATA_MAX);
+    TCL_MALLOC_CHECK(bufs[i].payload);
+    bufs[i].size = ADLB_DATA_MAX;
+  }
+
+  tc = turbine_async_worker_loop(interp, exec, adlb_work_type,
+                                  bufs, ASYNC_EXEC_BUFFERS);
+
   if (tc == TURBINE_ERROR_EXTERNAL)
     // turbine_async_worker_loop() has added the error info
-   return TCL_ERROR; 
+   return TCL_ERROR;
   else
     TCL_CONDITION(tc == TURBINE_SUCCESS, "Unknown worker error!");
-  
+
+  for (int i = 0; i < ASYNC_EXEC_BUFFERS; i++)
+  {
+    free(bufs[i].payload);
+  }
+
   return TCL_OK;
 }
 
@@ -1243,7 +1254,7 @@ Noop_Exec_Run_Cmd(ClientData cdata, Tcl_Interp *interp,
 {
   TCL_CONDITION(objc >= 2 && objc <= 4, "Wrong # args");
   turbine_code tc;
- 
+
   bool started;
   const turbine_executor *noop_exec;
   noop_exec = turbine_get_async_exec(NOOP_EXECUTOR_NAME, &started);
@@ -1270,7 +1281,7 @@ Noop_Exec_Run_Cmd(ClientData cdata, Tcl_Interp *interp,
 
   tc = noop_execute(interp, noop_exec, str, len, callbacks);
   TCL_CONDITION(tc == TURBINE_SUCCESS, "Error executing noop task");
-  
+
   return TCL_OK;
 }
 
@@ -1294,7 +1305,7 @@ Coaster_Run_Cmd(ClientData cdata, Tcl_Interp *interp,
   TCL_CONDITION(objc == 8, "Wrong # args: %i", objc - 1);
   turbine_code tc;
   int rc;
- 
+
   const turbine_executor *coaster_exec;
   bool started;
   coaster_exec = turbine_get_async_exec(COASTER_EXECUTOR_NAME, &started);
@@ -1309,14 +1320,14 @@ Coaster_Run_Cmd(ClientData cdata, Tcl_Interp *interp,
   const char **argv;
   size_t *arg_lens;
   coaster_stage_entry *stageins, *stageouts;
- 
+
   rc = tcllist_to_strings(interp, objv, objv[2], &argc, &argv, &arg_lens);
   TCL_CHECK(rc);
-  
+
   rc = parse_coaster_stages(interp, objv, objv[3], TMP_STAGING_MODE,
                     &stageinc, &stageins);
   TCL_CHECK(rc);
-  
+
   rc = parse_coaster_stages(interp, objv, objv[4], TMP_STAGING_MODE,
                     &stageoutc, &stageouts);
   TCL_CHECK(rc);
@@ -1375,7 +1386,7 @@ Coaster_Run_Cmd(ClientData cdata, Tcl_Interp *interp,
 
   tc = coaster_execute(interp, coaster_exec, job, callbacks);
   TCL_CONDITION(tc == TURBINE_SUCCESS, "Error executing coaster task");
-  
+
   return TCL_OK;
 #endif
 }
@@ -1451,7 +1462,7 @@ static int parse_coaster_stages(Tcl_Interp *interp, Tcl_Obj *const objv[],
  */
 static int parse_coaster_opts(Tcl_Interp *interp, Tcl_Obj *const objv[],
       Tcl_Obj *dict, const char **stdin_s, size_t *stdin_slen,
-      const char **stdout_s, size_t *stdout_slen, 
+      const char **stdout_s, size_t *stdout_slen,
       const char **stderr_s, size_t *stderr_slen)
 {
   int rc;
@@ -1469,7 +1480,7 @@ static int parse_coaster_opts(Tcl_Interp *interp, Tcl_Obj *const objv[],
     int tmp_len;
 
     key_s = Tcl_GetStringFromObj(key, &key_len);
-    
+
     if (key_len == 5 && memcmp(key_s, "stdin", 5) == 0)
     {
       *stdin_s = Tcl_GetStringFromObj(value, &tmp_len);
@@ -1545,7 +1556,7 @@ Tclturbine_Init(Tcl_Interp* interp)
 
   COMMAND("noop_exec_register", Noop_Exec_Register_Cmd);
   COMMAND("noop_exec_run", Noop_Exec_Run_Cmd);
-  
+
   COMMAND("coaster_register", Coaster_Register_Cmd);
   COMMAND("coaster_run", Coaster_Run_Cmd);
 
