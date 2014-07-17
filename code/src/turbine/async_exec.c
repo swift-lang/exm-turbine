@@ -362,7 +362,6 @@ get_tasks(Tcl_Interp *interp, turbine_executor *executor,
       tmp_bufs[i] = reqs->buffers[(reqs->head + i) % reqs->max_reqs];
     }
 
-
     ac = ADLB_Amget(adlb_work_type, extra_reqs, tmp_bufs, tmp_reqs);
     EXEC_ADLB_CHECK_MSG(ac, TURBINE_EXEC_OTHER,
                           "Error getting work from ADLB");
@@ -370,7 +369,7 @@ get_tasks(Tcl_Interp *interp, turbine_executor *executor,
     for (int i = 0; i < extra_reqs; i++)
     {
       reqs->requests[reqs->head] = tmp_reqs[i];
-      reqs->head = (reqs->head + i) % reqs->max_reqs;
+      reqs->head = (reqs->head + 1) % reqs->max_reqs;
     }
     reqs->nreqs += extra_reqs;
   }
@@ -414,6 +413,8 @@ get_tasks(Tcl_Interp *interp, turbine_executor *executor,
       }
       EXEC_ADLB_CHECK_MSG(ac, TURBINE_EXEC_OTHER,
                           "Error getting work from ADLB");
+
+      assert(ac == ADLB_SUCCESS);
     }
 
     int cmd_len = work_len - 1;
