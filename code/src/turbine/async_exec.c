@@ -329,7 +329,6 @@ turbine_async_worker_loop(Tcl_Interp *interp, turbine_executor *exec,
 
 /*
  * Get tasks from adlb and execute them.
- * TODO: currently only executes one task, but could do multiple
  * got_tasks: set to true if got at least one task, unmodified otherwise
  */
 static turbine_exec_code
@@ -345,16 +344,33 @@ get_tasks(Tcl_Interp *interp, turbine_executor *executor,
 
   if (extra_reqs > 0)
   {
-    // TODO: get things to/from contiguous arrays
-    // TODO: issue Amget()
+    // Use temporary arrays to get contiguous items
+    // TODO: avoid copying if possible?
+    adlb_get_req tmp_reqs[extra_reqs];
+    adlb_payload_buf tmp_bufs[extra_reqs];
+    for (int i = 0; i < extra_reqs; i++)
+    {
+      tmp_bufs[i] = reqs->buffers[(reqs->head + i) % reqs->max_reqs];
+    }
+
+    ac = ADLB_Amget(adlb_work_type, extra_reqs, tmp_bufs, tmp_reqs);
+    EXEC_ADLB_CHECK_MSG(ac, TURBINE_EXEC_OTHER,
+                          "Error getting work from ADLB");
+
+
+    for (int i = 0; i < extra_reqs; i++)
+    {
+      reqs->requests[reqs->head] = tmp_reqs[i];
+      reqs->head = (reqs->head + i) % reqs->max_reqs;
+    }
+    reqs->nreqs += extra_reqs;
   }
 
   *got_tasks = false;
 
-  while (reqs->tail != reqs->head) 
+  while (reqs->tail != reqs->head)
   {
     MPI_Comm tmp_comm;
-    // TODO: check with wait/test
     adlb_get_req *req = &reqs->requests[reqs->tail];
     int work_len, answer_rank, type_recved;
     if (poll)
