@@ -291,6 +291,8 @@ turbine_async_worker_loop(Tcl_Interp *interp, turbine_executor *exec,
                      poll, max_tasks, &something_happened);
       if (ec == TURBINE_EXEC_SHUTDOWN)
       {
+        DEBUG_TURBINE("Shutdown: terminating async executor loop for %s",
+                      exec->name);
         break;
       }
       TURBINE_EXEC_CHECK_MSG(ec, TURBINE_ERROR_EXTERNAL,
@@ -342,8 +344,15 @@ get_tasks(Tcl_Interp *interp, turbine_executor *executor,
                       max_tasks : reqs->max_reqs;
   int extra_reqs = desired_reqs - reqs->nreqs;
 
+  DEBUG_TURBINE("get_tasks: executor=%s adlb_work_type=%i poll=%s "
+                "max_tasks=%i max_reqs=%i nreqs=%i extra_reqs=%i",
+                executor->name, adlb_work_type, poll ? "true" : "false",
+                max_tasks, reqs->max_reqs, reqs->nreqs, extra_reqs);
+
   if (extra_reqs > 0)
   {
+    DEBUG_TURBINE("Issuing %i more requests for work type %i",
+                  extra_reqs, adlb_work_type);
     // Use temporary arrays to get contiguous items
     // TODO: avoid copying if possible?
     adlb_get_req tmp_reqs[extra_reqs];
@@ -352,6 +361,7 @@ get_tasks(Tcl_Interp *interp, turbine_executor *executor,
     {
       tmp_bufs[i] = reqs->buffers[(reqs->head + i) % reqs->max_reqs];
     }
+
 
     ac = ADLB_Amget(adlb_work_type, extra_reqs, tmp_bufs, tmp_reqs);
     EXEC_ADLB_CHECK_MSG(ac, TURBINE_EXEC_OTHER,
@@ -367,7 +377,8 @@ get_tasks(Tcl_Interp *interp, turbine_executor *executor,
 
   *got_tasks = false;
 
-  while (reqs->tail != reqs->head)
+  DEBUG_TURBINE("reqs->tail=%i reqs->head=%i", reqs->tail, reqs->head);
+  while (reqs->nreqs > 0)
   {
     MPI_Comm tmp_comm;
     adlb_get_req *req = &reqs->requests[reqs->tail];
@@ -379,7 +390,13 @@ get_tasks(Tcl_Interp *interp, turbine_executor *executor,
       EXEC_ADLB_CHECK_MSG(ac, TURBINE_EXEC_OTHER,
                           "Error getting work from ADLB");
 
-      if (ac == ADLB_NOTHING)
+      if (ac == ADLB_SHUTDOWN)
+      {
+        // Unlikely to get this, but handle correctly anyway
+        DEBUG_TURBINE("Unexpected shutdown after test");
+        return TURBINE_EXEC_SHUTDOWN;
+      }
+      else if (ac == ADLB_NOTHING)
       {
         return TURBINE_EXEC_SUCCESS;
       }
@@ -390,6 +407,8 @@ get_tasks(Tcl_Interp *interp, turbine_executor *executor,
                           &tmp_comm);
       if (ac == ADLB_SHUTDOWN)
       {
+        DEBUG_TURBINE("Async executor loop for %s got shutdown signal",
+                      executor->name);
         return TURBINE_EXEC_SHUTDOWN;
       }
       EXEC_ADLB_CHECK_MSG(ac, TURBINE_EXEC_OTHER,
@@ -480,6 +499,9 @@ check_tasks(Tcl_Interp *interp, turbine_executor *executor, bool poll,
     ec = executor->wait(executor->state, completed, &ncompleted);
     EXEC_CHECK(ec);
   }
+  
+  DEBUG_TURBINE("check_tasks: executor=%s poll=%s ncompleted=%i",
+                executor->name, poll ? "true" : "false", ncompleted);
 
   for (int i = 0; i < ncompleted; i++)
   {
