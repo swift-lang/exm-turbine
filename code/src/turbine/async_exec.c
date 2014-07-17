@@ -338,7 +338,7 @@ get_tasks(Tcl_Interp *interp, turbine_executor *executor,
 {
   adlb_code ac;
   int rc;
-  int desired_reqs = (max_tasks > reqs->max_reqs) ?
+  int desired_reqs = (max_tasks < reqs->max_reqs) ?
                       max_tasks : reqs->max_reqs;
   int extra_reqs = desired_reqs - reqs->nreqs;
 
