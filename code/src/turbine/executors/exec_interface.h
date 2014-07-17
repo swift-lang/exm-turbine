@@ -150,7 +150,10 @@ struct turbine_executor
 /*
   Register executor with async executors module.
   This can be called anytime, including before the module is
-  initialized.
+  initialized.  Ownership of all memory stays with the caller:
+  this will copy any data such as the executor name as needed.
+
+  All function pointers must be non-null.
  */
 turbine_code
 turbine_add_async_exec(turbine_executor executor);

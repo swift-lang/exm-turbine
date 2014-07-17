@@ -136,11 +136,19 @@ turbine_add_async_exec(turbine_executor executor)
         "Adding %s would exceed limit of %i async executors",
         executor.name, TURBINE_ASYNC_EXECUTOR_LIMIT);
 
-  // TODO: ownership of pointers, etc
-  // TODO: validate executor
+  // Validate functoin pointers
+  assert(executor.name != NULL);
+  assert(executor.configure != NULL);
+  assert(executor.start != NULL);
+  assert(executor.stop != NULL);
+  assert(executor.wait != NULL);
+  assert(executor.poll != NULL);
+  assert(executor.slots != NULL);
+
   turbine_executor *exec_ptr = malloc(sizeof(executor));
   TURBINE_MALLOC_CHECK(exec_ptr);
   *exec_ptr = executor;
+  exec_ptr->name = strdup(executor.name);
 
   table_add(&executors, executor.name, exec_ptr);
 
@@ -197,12 +205,10 @@ turbine_configure_exec(turbine_executor *exec, const char *config,
   assert(exec != NULL);
   turbine_exec_code ec;
 
-  if (exec->configure != NULL)
-  {
-    ec = exec->configure(&exec->context, config, config_len);
-    TURBINE_EXEC_CHECK_MSG(ec, TURBINE_ERROR_EXTERNAL,
-                 "error configuring executor %s", exec->name);
-  }
+  assert(exec->configure != NULL);
+  ec = exec->configure(&exec->context, config, config_len);
+  TURBINE_EXEC_CHECK_MSG(ec, TURBINE_ERROR_EXTERNAL,
+               "error configuring executor %s", exec->name);
 
   return TURBINE_SUCCESS;
 }
@@ -451,10 +457,10 @@ stop_executors(turbine_executor *executors, int nexecutors)
 static void exec_free_cb(const char *key, void *val)
 {
   turbine_executor *exec_ptr = val;
-  if (exec_ptr->free != NULL)
-  {
-    exec_ptr->free(exec_ptr->context);
-  }
+  assert(exec_ptr->free != NULL);
+
+  exec_ptr->free(exec_ptr->context);
+  free((void*)exec->name); // We allocate memory when we copied executor
   free(exec_ptr);
 }
 
