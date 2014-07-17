@@ -679,7 +679,7 @@ AC_ARG_WITH(coaster,
   [
       HAVE_COASTER=1
       USE_COASTER=${withval}
-      AC_CHECK_FILE(${USE_COASTER}/include/coasters.h, [],
+      AC_CHECK_FILE(${USE_COASTER}/include/coaster.h, [],
                     [AC_MSG_ERROR([Could not find coaster C client header!])])
   ])
 AC_DEFINE_UNQUOTED(HAVE_COASTER,${HAVE_COASTER},[Enables Coaster Interface])

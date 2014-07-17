@@ -16,7 +16,7 @@
 # Functions for launching external apps
 
 namespace eval turbine {
-  namespace export unpack_args exec_external poll_mock async_exec_coasters
+  namespace export unpack_args exec_external poll_mock async_exec_coaster
   # Run external application
   # cmd: executable to run
   # kwopts: keyword options.  Valid are:
@@ -65,7 +65,7 @@ namespace eval turbine {
     }
   }
 
-  # Launch a coasters job that will execute asynchronously
+  # Launch a coaster job that will execute asynchronously
   # cmd: command to run
   # cmdargs: arguments for command
   # infiles: input files (e.g. for staging in)
@@ -74,7 +74,7 @@ namespace eval turbine {
   # success: a code fragment to run after finishing the
   #         task.  TODO: want to set vars for this continuation to access
   # failure: failure continuation
-  proc async_exec_coasters { cmd cmdargs infiles outfiles kwopts success failure } {
+  proc async_exec_coaster { cmd cmdargs infiles outfiles kwopts success failure } {
     return [ coaster_run $cmd $cmdargs $infiles $outfiles $kwopts $success $failure ]
   }
 

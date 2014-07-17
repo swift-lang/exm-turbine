@@ -36,7 +36,7 @@
 #define COASTER_ENV_URL "COASTER_SERVICE_URL"
 
 /*
-  Coasters context info, e.g. configuration that remains constant
+  Coaster context info, e.g. configuration that remains constant
   over entire run.
  */
 typedef struct {
@@ -61,7 +61,7 @@ typedef struct coaster_state {
   // Overall context
   coaster_context *context;
 
-  // Actual Coasters client
+  // Actual Coaster client
   coaster_client *client;
 
   // Config ID for server
@@ -132,11 +132,11 @@ coaster_executor_register(void)
   turbine_executor exec;
   ec = init_coaster_executor(&exec);
   TURBINE_EXEC_CHECK_MSG(ec, TURBINE_ERROR_EXTERNAL,
-               "error initializing Coasters executor");
+               "error initializing Coaster executor");
 
   ec = turbine_add_async_exec(exec);
   TURBINE_EXEC_CHECK_MSG(ec, TURBINE_ERROR_EXTERNAL,
-               "error registering Coasters executor with Turbine");
+               "error registering Coaster executor with Turbine");
 
   return TURBINE_SUCCESS;
 }
@@ -225,7 +225,7 @@ coaster_stop(void *state)
 
 /*
   Check any outstanding tasks at shutdown.
-  Should be called after stopping coasters client and thread.
+  Should be called after stopping coaster client and thread.
  */
 static turbine_exec_code
 coaster_cleanup_active(coaster_state *state)
@@ -244,7 +244,7 @@ coaster_cleanup_active(coaster_state *state)
                     "%s\n", job_id, job_str);
     free(job_str);
 
-    // Free coasters job now that client is shut down
+    // Free coaster job now that client is shut down
     crc = coaster_job_free(task->job);
     COASTER_CHECK(crc, TURBINE_EXEC_OTHER);
 
@@ -290,7 +290,7 @@ coaster_execute(Tcl_Interp *interp, const turbine_executor *exec,
   assert(job != NULL);
   coaster_state *s = exec->state;
   turbine_condition(s != NULL, TURBINE_ERROR_INVALID,
-        "Invalid state for coasters executor");
+        "Invalid state for coaster executor");
   assert(s->slots.used < s->slots.total);
   s->slots.used++;
 
@@ -401,10 +401,10 @@ coaster_wait(void *state, turbine_completed_task *completed,
   coaster_state *s = state;
 
   EXEC_CONDITION(s->slots.used, TURBINE_EXEC_INVALID,
-                "Cannot wait if no active coasters tasks");
+                "Cannot wait if no active coaster tasks");
 
   turbine_exec_code ec = check_completed(s, completed, ncompleted, true);
-  EXEC_CHECK_MSG(ec, "error checking for completed tasks in Coasters "
+  EXEC_CHECK_MSG(ec, "error checking for completed tasks in Coaster "
                      "executor");
 
   return TURBINE_EXEC_SUCCESS;
@@ -418,7 +418,7 @@ coaster_poll(void *state, turbine_completed_task *completed,
   if (s->slots.used > 0)
   {
     turbine_exec_code ec = check_completed(s, completed, ncompleted, false);
-    EXEC_CHECK_MSG(ec, "error checking for completed tasks in Coasters "
+    EXEC_CHECK_MSG(ec, "error checking for completed tasks in Coaster "
                        "executor");
   }
   else

@@ -20,8 +20,8 @@
 #include "src/turbine/async_exec.h"
 #include "src/turbine/turbine-defs.h"
 
-// Use C-based coasters API
-#include <coasters.h>
+// Use C-based coaster API
+#include <coaster.h>
 
 // Registered name for coaster executor
 #define COASTER_EXECUTOR_NAME "COASTER"

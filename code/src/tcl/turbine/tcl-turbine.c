@@ -57,7 +57,7 @@
 #include "src/turbine/executors/noop_executor.h"
 
 #if HAVE_COASTER == 1
-#include <coasters.h>
+#include <coaster.h>
 #include "src/turbine/executors/coaster_executor.h"
 #endif
 
@@ -1485,7 +1485,7 @@ static int parse_coaster_opts(Tcl_Interp *interp, Tcl_Obj *const objv[],
       }
     }
 
-    TCL_CONDITION(false, "Unknown coasters key: %.*s", key_len, key_s);
+    TCL_CONDITION(false, "Unknown coaster key: %.*s", key_len, key_s);
   }
   Tcl_DictObjDone(&search);
   return TCL_OK;
