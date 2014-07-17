@@ -298,8 +298,7 @@ coaster_execute(Tcl_Interp *interp, const turbine_executor *exec,
   crc = coaster_submit(s->client, s->config, job);
   COASTER_CHECK(crc, TURBINE_ERROR_EXTERNAL);
 
-  DEBUG_TURBINE("COASTER: Launched task: %.*s\n", length,
-                (const char*)work);
+  DEBUG_TURBINE("COASTER: Launched job: %p\n", job);
 
   coaster_active_task *task;
   task = malloc(sizeof(*task));
