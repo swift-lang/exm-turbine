@@ -357,7 +357,6 @@ get_tasks(Tcl_Interp *interp, turbine_executor *executor,
     EXEC_ADLB_CHECK_MSG(ac, TURBINE_EXEC_OTHER,
                           "Error getting work from ADLB");
 
-
     for (int i = 0; i < extra_reqs; i++)
     {
       reqs->requests[reqs->head] = tmp_reqs[i];
@@ -399,6 +398,7 @@ get_tasks(Tcl_Interp *interp, turbine_executor *executor,
 
     int cmd_len = work_len - 1;
     void *work = reqs->buffers[reqs->tail].payload;
+    printf("RUN: %s\n", (char*)work);
     rc = Tcl_EvalEx(interp, work, cmd_len, 0);
     if (rc != TCL_OK)
     {
@@ -407,13 +407,14 @@ get_tasks(Tcl_Interp *interp, turbine_executor *executor,
     }
 
     *got_tasks = true;
+    reqs->tail = (reqs->tail + 1) % reqs->max_reqs;
+    reqs->nreqs--;
     if (!poll)
     {
       // Don't want to block
       // TODO: would be nice to check more if we waited without blocking
-      return TURBINE_EXEC_SUCCESS;
+       break;
     }
-    reqs->tail = (reqs->tail + 1) % reqs->max_reqs;
   }
 
   return TURBINE_EXEC_SUCCESS;
