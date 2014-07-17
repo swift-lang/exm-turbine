@@ -400,6 +400,7 @@ get_tasks(Tcl_Interp *interp, turbine_executor *executor,
       {
         return TURBINE_EXEC_SUCCESS;
       }
+      assert(ac == ADLB_SUCCESS);
     }
     else
     {
@@ -417,7 +418,7 @@ get_tasks(Tcl_Interp *interp, turbine_executor *executor,
 
     int cmd_len = work_len - 1;
     void *work = reqs->buffers[reqs->tail].payload;
-    printf("RUN: %s\n", (char*)work);
+    DEBUG_TURBINE("RUN: %s (length %i)\n", (char*)work, cmd_len);
     rc = Tcl_EvalEx(interp, work, cmd_len, 0);
     if (rc != TCL_OK)
     {
