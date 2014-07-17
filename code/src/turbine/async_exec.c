@@ -345,9 +345,9 @@ get_tasks(Tcl_Interp *interp, turbine_executor *executor,
   int extra_reqs = desired_reqs - reqs->nreqs;
 
   DEBUG_TURBINE("get_tasks: executor=%s adlb_work_type=%i poll=%s "
-                "max_tasks=%i max_reqs=%i nreqs=%i extra_reqs=%i",
+                "max_tasks=%i max_reqs=%i nreqs=%i extra_reqs=%i head=%i",
                 executor->name, adlb_work_type, poll ? "true" : "false",
-                max_tasks, reqs->max_reqs, reqs->nreqs, extra_reqs);
+                max_tasks, reqs->max_reqs, reqs->nreqs, extra_reqs, reqs->head);
 
   if (extra_reqs > 0)
   {
@@ -381,6 +381,7 @@ get_tasks(Tcl_Interp *interp, turbine_executor *executor,
   {
     MPI_Comm tmp_comm;
     adlb_get_req *req = &reqs->requests[reqs->tail];
+    DEBUG_TURBINE("Check request %i", reqs->tail);
     int work_len, answer_rank, type_recved;
     if (poll)
     {
@@ -419,7 +420,8 @@ get_tasks(Tcl_Interp *interp, turbine_executor *executor,
 
     int cmd_len = work_len - 1;
     void *work = reqs->buffers[reqs->tail].payload;
-    DEBUG_TURBINE("RUN: %s (length %i)\n", (char*)work, cmd_len);
+    DEBUG_TURBINE("RUN (buffer %i): {%s} (length %i)\n",
+                  reqs->tail, (char*)work, cmd_len);
     rc = Tcl_EvalEx(interp, work, cmd_len, 0);
     if (rc != TCL_OK)
     {
