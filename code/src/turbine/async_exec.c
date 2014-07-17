@@ -277,7 +277,7 @@ turbine_async_worker_loop(Tcl_Interp *interp, turbine_executor *exec,
     if (!something_happened)
     {
       // yield to scheduler if nothing happened to allow background
-      // threads to run ASAPt
+      // threads to run ASAP
       sched_yield();
     }
   }
