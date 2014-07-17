@@ -112,6 +112,7 @@ init_coaster_executor(turbine_executor *exec)
 
   exec->context = NULL;
   exec->state = NULL;
+  exec->started = false;
 
   // Initialize all function pointers
   exec->configure = coaster_configure;

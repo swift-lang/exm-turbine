@@ -1180,7 +1180,7 @@ Async_Exec_Configure_Cmd(ClientData cdata, Tcl_Interp* interp,
   int config_len;
   const char *config = Tcl_GetStringFromObj(objv[2], &config_len);
 
-  turbine_executor *exec = turbine_get_async_exec(exec_name);
+  turbine_executor *exec = turbine_get_async_exec(exec_name, NULL);
   TCL_CONDITION(exec != NULL, "Executor %s not registered", exec_name);
   
   tc = turbine_configure_exec(exec, config, (size_t)config_len);
@@ -1210,7 +1210,7 @@ Async_Exec_Worker_Loop_Cmd(ClientData cdata, Tcl_Interp *interp,
 
   const char *exec_name = Tcl_GetString(objv[1]);
   
-  turbine_executor *exec = turbine_get_async_exec(exec_name);
+  turbine_executor *exec = turbine_get_async_exec(exec_name, NULL);
   TCL_CONDITION(exec != NULL, "Executor %s not registered", exec_name);
   
   int adlb_work_type;
@@ -1241,9 +1241,11 @@ Noop_Exec_Run_Cmd(ClientData cdata, Tcl_Interp *interp,
   TCL_CONDITION(objc >= 2 && objc <= 4, "Wrong # args");
   turbine_code tc;
  
+  bool started;
   const turbine_executor *noop_exec;
-  noop_exec = turbine_get_async_exec(NOOP_EXECUTOR_NAME);
+  noop_exec = turbine_get_async_exec(NOOP_EXECUTOR_NAME, &started);
   TCL_CONDITION(noop_exec != NULL, "Noop executor not registered");
+  TCL_CONDITION(started, "Noop executor not started");
 
   char *str;
   int len;
@@ -1291,8 +1293,10 @@ Coaster_Run_Cmd(ClientData cdata, Tcl_Interp *interp,
   int rc;
  
   const turbine_executor *coaster_exec;
-  coaster_exec = turbine_get_async_exec(COASTER_EXECUTOR_NAME);
+  bool started;
+  coaster_exec = turbine_get_async_exec(COASTER_EXECUTOR_NAME, &started);
   TCL_CONDITION(coaster_exec != NULL, "Coaster executor not registered");
+  TCL_CONDITION(started, "Coaster executor not started");
 
   const char *executable;
   int executable_len;

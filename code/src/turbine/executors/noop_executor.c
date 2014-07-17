@@ -68,6 +68,7 @@ init_noop_executor(turbine_executor *exec)
 
   exec->context = NULL;
   exec->state = NULL;
+  exec->started = false;
 
   exec->configure = noop_configure;
   exec->start = noop_start;

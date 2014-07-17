@@ -89,7 +89,7 @@ typedef turbine_exec_code (*turbine_exec_stop)(void *state);
  */
 typedef turbine_exec_code (*turbine_exec_free)(void *context);
 
-/* 
+/*
   Waiting: called on an executor with active tasks.
           updates completed with completed task info
   state: executor state pointer
@@ -130,8 +130,6 @@ struct turbine_executor
 {
   const char *name;
   async_exec_notif notif_mode;
-  void *context; // Context info
-  void *state; // Internal state to pass to executor functions
 
   /*
     Function pointers for executors
@@ -143,6 +141,10 @@ struct turbine_executor
   turbine_exec_wait wait;
   turbine_exec_poll poll;
   turbine_exec_slots slots;
+
+  void *context; // Context info
+  void *state; // Internal state to pass to executor functions
+  bool started; // True if started
 };
 
 /*

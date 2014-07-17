@@ -67,11 +67,14 @@ turbine_async_exec_names(const char **names, int size, int *count);
 
 /*
   lookup registered executor.
+
+  started: set to true if executor is started and not stopped.
+           May be set to NULL to ignore
   returns executor, or null if not registered.
-  pointer to executor remains valid until shut down
+    pointer to executor remains valid until shut down
  */
 turbine_executor *
-turbine_get_async_exec(const char *name);
+turbine_get_async_exec(const char *name, bool *started);
 
 turbine_code
 turbine_configure_exec(turbine_executor *exec, const char *config,
