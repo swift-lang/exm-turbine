@@ -9,6 +9,6 @@ TURBINE_SRC += $(DIR)/services.c
 TURBINE_SRC += $(DIR)/async_exec.c
 TURBINE_SRC += $(DIR)/executors/noop_executor.c
 
-ifeq ($(HAVE_COASTERS),1)
+ifeq ($(HAVE_COASTER),1)
   TURBINE_SRC += $(DIR)/executors/coaster_executor.c
 endif

@@ -222,8 +222,8 @@ USE_R  = @USE_R@
 HAVE_JULIA = @HAVE_JULIA@
 USE_JULIA  = @USE_JULIA@
 
-HAVE_COASTERS = @HAVE_COASTERS@
-USE_COASTERS  = @USE_COASTERS@
+HAVE_COASTER = @HAVE_COASTER@
+USE_COASTER  = @USE_COASTER@
 
 CFLAGS += $(STD)
 CFLAGS += -g
@@ -249,8 +249,8 @@ ifeq ($(HAVE_JULIA),1)
 	CFLAGS += -I $(USE_JULIA)/usr/include
 	CFLAGS += -I $(USE_JULIA)/src/support
 endif
-ifeq ($(HAVE_COASTERS),1)
-	CFLAGS += -I $(USE_COASTERS)/include
+ifeq ($(HAVE_COASTER),1)
+	CFLAGS += -I $(USE_COASTER)/include
 endif
 
 # LIBS: links to ADLB, c-utils, MPE, and MPI
@@ -282,9 +282,9 @@ ifeq ($(HAVE_JULIA),1)
 	LIBS += -L$(JULIA_LIB) -ljulia
 endif
 
-ifeq ($(HAVE_COASTERS),1)
-	COASTERS_LIB := $(USE_COASTERS)/lib
-	LIBS += -L$(COASTERS_LIB) -lcoasterclient
+ifeq ($(HAVE_COASTER),1)
+	COASTER_LIB := $(USE_COASTER)/lib
+	LIBS += -L$(COASTER_LIB) -lcoasterclient
 endif
 
 # If we are using libtcl*.a, need to always include these libraries
@@ -315,8 +315,8 @@ endif
 ifeq ($(HAVE_JULIA),1)
 	RPATHS += -Wl,-rpath -Wl,$(JULIA_LIB)
 endif
-ifeq ($(HAVE_COASTERS),1)
-	RPATHS += -Wl,-rpath -Wl,$(COASTERS_LIB)
+ifeq ($(HAVE_COASTER),1)
+	RPATHS += -Wl,-rpath -Wl,$(COASTER_LIB)
 endif
 
 ### INCLUDES

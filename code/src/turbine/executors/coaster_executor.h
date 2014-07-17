@@ -14,8 +14,8 @@
  * limitations under the License
  */
 
-#ifndef __COASTERS_EXECUTOR_H
-#define __COASTERS_EXECUTOR_H
+#ifndef __COASTER_EXECUTOR_H
+#define __COASTER_EXECUTOR_H
 
 #include "src/turbine/async_exec.h"
 #include "src/turbine/turbine-defs.h"
@@ -40,4 +40,4 @@ turbine_code
 coaster_execute(Tcl_Interp *interp, const turbine_executor *exec,
                 coaster_job *job, turbine_task_callbacks callbacks);
 
-#endif //__COASTERS_EXECUTOR_H
+#endif //__COASTER_EXECUTOR_H
