@@ -1143,7 +1143,7 @@ Async_Exec_Names_Cmd(ClientData cdata, Tcl_Interp* interp,
 
   turbine_code tc;
 
-  const int names_size = TURBINE_ASYNC_EXECUTOR_LIMIT;
+  const int names_size = TURBINE_ASYNC_EXEC_LIMIT;
   const char *names[names_size];
   int n;
   tc = turbine_async_exec_names(names, names_size, &n);
@@ -1218,8 +1218,10 @@ Async_Exec_Worker_Loop_Cmd(ClientData cdata, Tcl_Interp *interp,
   rc = Tcl_GetIntFromObj(interp, objv[2], &adlb_work_type);
   TCL_CHECK(rc);
 
-  tc = turbine_async_worker_loop(interp, exec, adlb_work_type,
-                                 buffer, buffer_size);
+  // TODO: multiple buffers
+  adlb_payload_buf buf = { .payload = buffer, .size = (int)buffer_size };
+
+  tc = turbine_async_worker_loop(interp, exec, adlb_work_type, &buf, 1);
   free(buffer);
   
   if (tc == TURBINE_ERROR_EXTERNAL)

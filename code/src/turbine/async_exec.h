@@ -26,7 +26,10 @@
 #include <tcl.h>
 
 // Limit on number of registered async executors
-#define TURBINE_ASYNC_EXECUTOR_LIMIT 64
+#define TURBINE_ASYNC_EXEC_LIMIT 64
+
+// Limit on number of concurrent get requests
+#define TURBINE_ASYNC_EXEC_MAX_REQS 256
 
 // Forward declare turbine executor
 typedef struct turbine_executor turbine_executor;
@@ -59,7 +62,7 @@ turbine_code turbine_async_exec_finalize(void);
   names: caller array to fill in with name pointers.  Pointers remain
         owned by this module, will be invalidated when finalized or
         an executor is added or removed.
-  size: size of names array.  If >= TURBINE_ASYNC_EXECUTOR_LIMIT, will return all
+  size: size of names array.  If >= TURBINE_ASYNC_EXEC_LIMIT, will return all
         names
  */
 turbine_code
@@ -80,8 +83,19 @@ turbine_code
 turbine_configure_exec(turbine_executor *exec, const char *config,
                        size_t config_len);
 
+/*
+  Start an async worker loop.
+  exec: executor to use.  Will be started by this function if not started.
+        If this function had to start it, it will stop it.
+  payload_buffer: array of initialized payload buffers to use.
+        The number of concurrent work requests to ADLB will be limited
+        by the number of buffers provided.
+        At most TURBINE_ASYNC_EXEC_MAX_REQS will be used.
+  nbuffers: size of payload_buffer array.
+ */
 turbine_code
 turbine_async_worker_loop(Tcl_Interp *interp, turbine_executor *exec,
-                int adlb_work_type, void *buffer, size_t buffer_size);
+                int adlb_work_type, adlb_payload_buf *payload_buffers,
+                int nbuffers);
 
 #endif //__ASYNC_EXEC_H

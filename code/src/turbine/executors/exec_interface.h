@@ -43,6 +43,7 @@ typedef enum {
   TURBINE_EXEC_SUCCESS,
   TURBINE_EXEC_SHUTDOWN,
   TURBINE_EXEC_OOM,
+  TURBINE_EXEC_TASK, // Error in task
   TURBINE_EXEC_INVALID, // Invalid API usage or input
   TURBINE_EXEC_OTHER, // Unexpected or generic error, prob unrecoverable
   // TODO: more info - e.g. if bad arg, or invalid state
