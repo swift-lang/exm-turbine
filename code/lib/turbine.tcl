@@ -77,7 +77,9 @@ namespace eval turbine {
     #     the rank_allocation function
     # lang: language to use in error messages
     proc init { rank_config {lang ""} } {
-        
+        # Initialise debugging in case other functions want to debug 
+        c::init_debug
+
         # Setup communicator so we can get size later
         if { [ info exists ::TURBINE_ADLB_COMM ] } {
             adlb::init_comm $::TURBINE_ADLB_COMM

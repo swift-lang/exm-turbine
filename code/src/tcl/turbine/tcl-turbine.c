@@ -161,6 +161,20 @@ Turbine_Init_Cmd(ClientData cdata, Tcl_Interp *interp,
   return TCL_OK;
 }
 
+/*
+  Initialises Turbine debug logging.
+  turbine::init_debug
+ */
+static int
+Turbine_Init_Debug_Cmd(ClientData cdata, Tcl_Interp *interp,
+                 int objc, Tcl_Obj *const objv[])
+{
+  TCL_ARGS(1);
+  turbine_debug_init();
+
+  return TCL_OK;
+}
+
 /**
    @return Tcl error code
 */
@@ -1531,6 +1545,7 @@ Tclturbine_Init(Tcl_Interp* interp)
   Blob_Init(interp);
 
   COMMAND("init",        Turbine_Init_Cmd);
+  COMMAND("init_debug",  Turbine_Init_Debug_Cmd);
   COMMAND("version",     Turbine_Version_Cmd);
   COMMAND("rule",        Turbine_Rule_Cmd);
   COMMAND("ruleopts",    Turbine_RuleOpts_Cmd);
