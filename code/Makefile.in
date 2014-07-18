@@ -66,6 +66,8 @@ ifeq ($(USE_MAC),no)
 		STD =
 		SHARED = -qmkshrobj -qnostaticlink -qnostaticlink=libgcc
 		WARNS =
+# TODO: from manifest, should be applied here if anywhere
+# On the BG/Q, set: -L /bgsys/drivers/V1R2M1/ppc64/comm/lib -lpami-gcc -lm -pthread -lmpl-gcc -lm
 	endif
 
 	SO_SUFFIX = so
@@ -371,8 +373,6 @@ TURBINE_DEPS := $(patsubst %.c, %.d, $(TURBINE_SRC))
 TURBINE_EXECUTABLE_DEPS := $(patsubst %.c, %.d, $(TURBINE_EXECUTABLE_SRC))
 TURBINE_EXECUTABLE_DEPS += $(patsubst %.manifest, %.manifest.d, \
 			     $(TURBINE_EXECUTABLE_MANIFESTS))
-TURBINE_EXECUTABLE_DEPS += $(patsubst %.manifest, %.x.d, \
-			     $(TURBINE_EXECUTABLE_MANIFESTS))
 
 STATIC_PKG_DEPS := $(patsubst %.c, %.d, $(STATIC_PKG_SRC))
 
@@ -382,7 +382,6 @@ include tests/module.mk
 TEST_DEPS := $(patsubst %.c, %.d, $(TEST_SRC))
 ifeq ($(ENABLE_STATIC_PKG),1)
 	TEST_DEPS += $(patsubst %.manifest, %.manifest.d, $(TEST_SRC_MANIFEST))
-	TEST_DEPS += $(patsubst %.manifest, %.x.d, $(TEST_SRC_MANIFEST))
 endif
 
 # Dependency files:
@@ -498,24 +497,14 @@ LD_EXEC_SYMBOL_EXPORT = -Wl,--export-dynamic
 
 # Rule to build C source file based on manifest
 # Also create deps file so it can be correctly recreated upon change.
-%.c: %.manifest %.manifest.d %.x.d $(MKSTATIC) $(MKSTATIC_TEMPLATE)
+%.c: %.manifest %.manifest.d $(MKSTATIC) $(MKSTATIC_TEMPLATE)
 	$(Q) "  MKSTATIC	$(@)"
-	$(E) $(MKSTATIC_RUN) $< -c $(@) \
-	      --link-deps $(patsubst %.manifest, %.x.d, $<) \
-			  $(patsubst %.manifest, %.x, $<)
+	$(E) $(MKSTATIC_RUN) $< -c $(@)
 
 %.manifest.d: %.manifest $(MKSTATIC) $(MKSTATIC_TEMPLATE)
 	$(Q) "  MKSTATIC_DEPS	$(@)"
 	$(E) $(MKSTATIC_RUN) $< \
 	  --deps $(@) $(patsubst %.manifest, %.c, $<)
-
-# Dependency rules for executable with .x or no extension
-%.x.d: %.manifest $(MKSTATIC) $(MKSTATIC_TEMPLATE)
-	$(Q) "  LINK_DEPS	$(@)"
-	$(E) $(MKSTATIC_RUN) $< --link-deps $(@) \
-			  $(patsubst %.manifest, %.x, $<)
-	$(E) $(MKSTATIC_RUN) $< --link-deps $(@) \
-			  $(patsubst %.manifest, %, $<)
 
 # Binary executables - link from .o
 # Currently builds a dynamically linked executable
@@ -524,8 +513,6 @@ LD_EXEC_SYMBOL_EXPORT = -Wl,--export-dynamic
 $(TURBINE_EXECUTABLES): %: %.o ${TCL_TURBINE_LIBS} ${STATIC_PKG_RESOURCE_H}
 	$(Q) "  LINK X	$(@)"
 	$(E) $(CC) $(LDFLAGS) $(LD_EXEC_SYMBOL_EXPORT) $(<) \
-	$(shell $(MKSTATIC_RUN) "$(@).manifest" --ignore-no-manifest --link-objs) \
-	$(shell $(MKSTATIC_RUN) "$(@).manifest" --ignore-no-manifest --link-flags) \
         $(MAC_FLAT) \
         $(TCL_TURBINE_LIB_FLAGS) \
         $(LIBS) \
@@ -563,9 +550,7 @@ test_results: $(TEST_RESULTS)
 $(TEST_BINS): %.x: %.o install.txt $(TEST_STATIC_PREREQS)
 	$(Q) "  LINK		$(@)"
 	$(E) $(CC) $(LDFLAGS) $(<) \
-	$(shell $(MKSTATIC_RUN) "$(@).manifest" --ignore-no-manifest --link-objs) \
         $(MAC_FLAT) \
-	$(shell $(MKSTATIC_RUN) "$(@).manifest" --ignore-no-manifest --link-flags) \
         $(TCL_TURBINE_LIB_FLAGS) \
         $(LIBS) \
 	$(RPATHS) \
