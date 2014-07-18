@@ -420,7 +420,6 @@ get_tasks(Tcl_Interp *interp, turbine_executor *executor,
 
     int cmd_len = work_len - 1;
     void *work = reqs->buffers[reqs->tail].payload;
-    DEBUG_TURBINE("Execute payload buffer: %p %i", work, work_len);
     DEBUG_TURBINE("RUN (buffer %i): {%s} (length %i)\n",
                   reqs->tail, (char*)work, cmd_len);
     rc = Tcl_EvalEx(interp, work, cmd_len, 0);
