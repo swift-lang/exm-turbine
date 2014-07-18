@@ -23,7 +23,8 @@ THIS=$0
 BIN=${THIS%.sh}.x
 OUTPUT=${THIS%.sh}.out
 
-mpiexec -n 2 ${BIN} >& ${OUTPUT}
+export PROCS=2
+${TESTS}/run-mpi.zsh ${BIN} >& ${OUTPUT}
 [[ ${?} == 0 ]] || test_result 1
 
 SIZE=$( grep -c "size: 16" ${OUTPUT} )
