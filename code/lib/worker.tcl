@@ -18,7 +18,7 @@
 namespace eval turbine {
 
     # Main worker loop
-    proc worker { rules startup_cmd } {
+    proc standard_worker { rules startup_cmd {mode WORK}} {
 
         eval $startup_cmd
         if { [ adlb::rank ] == 0 } {
@@ -31,10 +31,21 @@ namespace eval turbine {
           # TODO: replace with proper gemtc async worker
           return
         }
-        
+
         global WORK_TYPE
 
-        c::worker_loop $WORK_TYPE(WORK)
+        c::worker_loop $WORK_TYPE($mode)
+    }
+    
+    proc custom_worker { rules startup_cmd mode } {
+        variable custom_work_types
+        if { [ lsearch -exact $custom_work_types $mode ] != -1 } {
+            # Standard worker with custom work type
+            standard_worker $rules $startup_cmd $mode
+        } else {
+            # Must be named async executor
+            async_exec_worker $mode $rules $startup_cmd
+        }
     }
 
     # Worker that executes tasks via async executor

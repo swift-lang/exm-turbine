@@ -395,10 +395,9 @@ namespace eval turbine {
         variable mode
         switch $mode {
             SERVER  { adlb::server }
-            WORK  { worker $rules $startup_cmd}
+            WORK  { standard_worker $rules $startup_cmd }
             default {
-              # Must be named executor
-              async_exec_worker $mode $rules $startup_cmd
+              custom_worker $rules $startup_cmd $mode 
             }
         }
     }
