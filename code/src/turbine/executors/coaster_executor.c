@@ -21,6 +21,7 @@
 #include "src/util/debug.h"
 
 #include <assert.h>
+#include <limits.h>
 #include <unistd.h>
 
 #include <table_lp.h>
@@ -32,8 +33,19 @@
         "Error in Coaster execution: %s (%s)",                        \
         coaster_last_err_info(), coaster_rc_string(__crc)); }
 
-/* Environment variable names */
-#define COASTER_ENV_URL "COASTER_SERVICE_URL"
+/* Environment variable names
+   TODO: final config mechanism */
+#define COASTER_ENV_SERVICE_URL "COASTER_SERVICE_URL"
+#define COASTER_ENV_CLIENT_SLOTS "COASTER_CLIENT_SLOTS"
+
+#define COASTER_DEFAULT_SERVICE_URL "127.0.0.1:53001"
+/*
+  TODO: what is sensible default?  Potential factors:
+  - Imbalance between Coaster clients?
+  - Imbalance if Coaster clients connected to different services?
+  - Memory/CPU overhead of managing many jobs
+ */
+#define COASTER_DEFAULT_CLIENT_SLOTS 1024
 
 /*
   Coaster context info, e.g. configuration that remains constant
@@ -42,7 +54,7 @@
 typedef struct {
   char *service_url;
   size_t service_url_len;
-  int total_slots; // TODO: fixed slots count for now
+  int total_slots;
   coaster_settings *settings;
 } coaster_context;
 
@@ -101,6 +113,9 @@ static turbine_exec_code
 coaster_slots(void *state, turbine_exec_slot_state *slots);
 
 static turbine_exec_code
+coaster_max_slots(void *context, int *max);
+
+static turbine_exec_code
 check_completed(coaster_state *state, turbine_completed_task *completed,
                int *ncompleted, bool wait_for_completion);
 
@@ -122,6 +137,7 @@ init_coaster_executor(turbine_executor *exec)
   exec->wait = coaster_wait;
   exec->poll = coaster_poll;
   exec->slots = coaster_slots;
+  exec->max_slots = coaster_max_slots;
 
   return TURBINE_EXEC_SUCCESS;
 }
@@ -149,8 +165,22 @@ coaster_configure(void **context, const char *config,
   coaster_context *cx = malloc(sizeof(coaster_context));
   EXEC_MALLOC_CHECK(cx);
 
-  // TODO: load config, etc
-  cx->total_slots = 4;
+  cx->total_slots = COASTER_DEFAULT_CLIENT_SLOTS;
+  const char *slots_str = getenv(COASTER_ENV_CLIENT_SLOTS);
+  if (slots_str != NULL) {
+    char *end;
+    long slots_val = strtol(slots_str, &end, 10);
+    turbine_condition(end != slots_str && end[0] == '\0',
+        TURBINE_ERROR_INVALID, "Slots setting in environment var %s "
+        "was not integer: \"%s\"", COASTER_ENV_CLIENT_SLOTS, slots_str);
+
+    turbine_condition(slots_val >= 1 && slots_val <= INT_MAX,
+        TURBINE_ERROR_INVALID, "Slots setting in environment var %s "
+        "was not positive int value: %li", COASTER_ENV_CLIENT_SLOTS,
+        slots_val);
+
+    cx->total_slots = (int)slots_val;
+  }
 
   coaster_rc crc = coaster_settings_create(&cx->settings);
   COASTER_CHECK(crc, TURBINE_EXEC_OOM);
@@ -162,11 +192,11 @@ coaster_configure(void **context, const char *config,
       (int)config_len, config, coaster_last_err_info());
   COASTER_CHECK(crc, TURBINE_EXEC_OOM);
 
-  const char *service_url = getenv(COASTER_ENV_URL);
+  const char *service_url = getenv(COASTER_ENV_SERVICE_URL);
 
   if (service_url == NULL)
   {
-    service_url = "127.0.0.1:53001";
+    service_url = COASTER_DEFAULT_SERVICE_URL;
   }
 
   size_t service_url_len = strlen(service_url);
@@ -432,5 +462,12 @@ static turbine_exec_code
 coaster_slots(void *state, turbine_exec_slot_state *slots)
 {
   *slots = ((coaster_state*)state)->slots;
+  return TURBINE_EXEC_SUCCESS;
+}
+
+static turbine_exec_code
+coaster_max_slots(void *context, int *max) {
+  assert(context != NULL);
+  *max = ((coaster_context*)context)->total_slots;
   return TURBINE_EXEC_SUCCESS;
 }

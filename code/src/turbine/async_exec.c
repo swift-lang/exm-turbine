@@ -230,6 +230,20 @@ turbine_configure_exec(turbine_executor *exec, const char *config,
 }
 
 turbine_code
+turbine_async_exec_max_slots(const turbine_executor *exec, int *max)
+{
+  assert(exec->max_slots != NULL);
+
+  turbine_exec_code ec;
+
+  ec = exec->max_slots(exec->context, max);
+  TURBINE_EXEC_CHECK_MSG(ec, TURBINE_ERROR_EXTERNAL,
+           "error determining max slots for executor %s", exec->name);
+   
+  return TURBINE_SUCCESS;
+}
+
+turbine_code
 turbine_async_worker_loop(Tcl_Interp *interp, turbine_executor *exec,
                 int adlb_work_type, adlb_payload_buf *payload_buffers,
                 int nbuffers)
@@ -260,7 +274,6 @@ turbine_async_worker_loop(Tcl_Interp *interp, turbine_executor *exec,
     .head = 0,
     .tail = 0,
   };
-  // TODO: check buffers large enough for work units?
 
   assert(exec->start != NULL);
   bool must_start = !exec->started;
@@ -353,8 +366,8 @@ get_tasks(Tcl_Interp *interp, turbine_executor *executor,
   {
     DEBUG_TURBINE("Issuing %i more requests for work type %i",
                   extra_reqs, adlb_work_type);
+
     // Use temporary arrays to get contiguous items
-    // TODO: avoid copying if possible?
     adlb_get_req tmp_reqs[extra_reqs];
     adlb_payload_buf tmp_bufs[extra_reqs];
     for (int i = 0; i < extra_reqs; i++)
@@ -432,12 +445,9 @@ get_tasks(Tcl_Interp *interp, turbine_executor *executor,
     *got_tasks = true;
     reqs->tail = (reqs->tail + 1) % reqs->max_reqs;
     reqs->nreqs--;
-    if (!poll)
-    {
-      // Don't want to block
-      // TODO: would be nice to check more if we waited without blocking
-       break;
-    }
+
+    // We got at least one result: future checks should not block
+    poll = true;
   }
 
   return TURBINE_EXEC_SUCCESS;
@@ -503,7 +513,7 @@ check_tasks(Tcl_Interp *interp, turbine_executor *executor, bool poll,
     ec = executor->wait(executor->state, completed, &ncompleted);
     EXEC_CHECK(ec);
   }
-  
+
   DEBUG_TURBINE("check_tasks: executor=%s poll=%s ncompleted=%i",
                 executor->name, poll ? "true" : "false", ncompleted);
 

@@ -46,7 +46,6 @@ typedef enum {
   TURBINE_EXEC_TASK, // Error in task
   TURBINE_EXEC_INVALID, // Invalid API usage or input
   TURBINE_EXEC_OTHER, // Unexpected or generic error, prob unrecoverable
-  // TODO: more info - e.g. if bad arg, or invalid state
 } turbine_exec_code;
 
 /*
@@ -110,10 +109,19 @@ typedef turbine_exec_code (*turbine_exec_poll)(void *state,
           turbine_completed_task *completed, int *ncompleted);
 
 /*
-  Slots: fill in counts of slots
+  Slots: fill in counts of slots.
+  May be called any time after start.
+  If maximum slots is unlimited or unknown, should be set to -1
  */
 typedef turbine_exec_code (*turbine_exec_slots)(void *state,
                                   turbine_exec_slot_state *slots);
+/*
+  Max_slots: determine maximum number of slots according to config
+  May be called any time after configuration.
+  If maximum slots is unlimited or unknown, should be set to -1
+ */
+typedef turbine_exec_code (*turbine_exec_max_slots)(void *context,
+                                                    int *max);
 
 // Executor notification model
 // TODO: only polling based currently used
@@ -142,6 +150,7 @@ struct turbine_executor
   turbine_exec_wait wait;
   turbine_exec_poll poll;
   turbine_exec_slots slots;
+  turbine_exec_max_slots max_slots;
 
   void *context; // Context info
   void *state; // Internal state to pass to executor functions

@@ -32,11 +32,20 @@ namespace eval turbine {
           return
         }
 
+        set keyword_args [ dict create ]
+
+        set buffer_size_val [ configured_buffer_size $mode ]
+
+        puts "VAL $buffer_size_val"
+        if { $buffer_size_val != "" }  {
+          dict append keyword_args buffer_size $buffer_size_val
+        }
+
         global WORK_TYPE
 
-        c::worker_loop $WORK_TYPE($mode)
+        c::worker_loop $WORK_TYPE($mode) $keyword_args
     }
-    
+
     proc custom_worker { rules startup_cmd mode } {
         variable custom_work_types
         if { [ lsearch -exact $custom_work_types $mode ] != -1 } {
@@ -56,17 +65,54 @@ namespace eval turbine {
         if [ info exists env($config_key) ] {
           set config_str $env($config_key)
         }
+
+        set keyword_args [ dict create ]
+
+        set buffer_size_val [ configured_buffer_size $work_type ]
+
+        if { $buffer_size_val != "" }  {
+          dict append keyword_args buffer_size $buffer_size_val
+        }
+
+        set buffer_count_val [ configured_buffer_count $work_type ]
+
+        if { $buffer_count_val != "" }  {
+          dict append keyword_args buffer_count $buffer_count_val
+        }
+
         async_exec_configure $work_type $config_str
-      
+
         eval $startup_cmd
         if { [ adlb::rank ] == 0 } {
             # First rank should start execution
             eval $rules
         }
-        
+
 
         global WORK_TYPE
-        
-        c::async_exec_worker_loop $work_type $WORK_TYPE($work_type)
+
+        c::async_exec_worker_loop $work_type $WORK_TYPE($work_type) $keyword_args
+    }
+
+    # returns empty string for default, or configured task buffer size
+    proc configured_buffer_size { {work_type WORK} } {
+        global env
+        set buffer_size_key "TURBINE_${work_type}_MAX_TASK_SIZE"
+        if [ info exists env($buffer_size_key) ] {
+          return $env($buffer_size_key)
+        } else {
+          return ""
+        }
+    }
+
+    # returns empty string for default, or configured task buffer count
+    proc configured_buffer_count { {work_type WORK} } {
+        global env
+        set buffer_count_key "TURBINE_${work_type}_BUFFER_COUNT"
+        if [ info exists env($buffer_count_key) ] {
+          return $env($buffer_count_key)
+        } else {
+          return ""
+        }
     }
 }
