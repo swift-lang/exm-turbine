@@ -1,3 +1,5 @@
+*This repository has migrated to https://github.com/swift-lang/swift-t*
+
 Turbine is a runtime library that supports distributed execution of
 task-parallel data-flow-based applications. It depends directly on:
  * lb, a distributed MPI-based load balancer and data-store
